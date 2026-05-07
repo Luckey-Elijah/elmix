@@ -1,0 +1,14 @@
+name: elmix_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+workspace:
+  - packages/elmix_engine
+  - packages/elmix_sqlite
+  - packages/elmix_server
+  - packages/elmix_admin
+  - packages/elmix_client
+  - packages/elmix_cli
+
