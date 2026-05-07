@@ -5,7 +5,7 @@ enum CollectionOperation { list, view, create, update, delete }
 ///
 /// Core v0 keeps the expression as data. Parsing and evaluation can evolve
 /// behind this value without changing storage or admin APIs.
-final class AccessRule {
+class AccessRule {
   const AccessRule(this.expression);
 
   final String expression;

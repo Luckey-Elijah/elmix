@@ -4,7 +4,7 @@ import 'package:elmix_engine/elmix_engine.dart';
 ///
 /// A concrete HTTP implementation can be added here without leaking transport
 /// details into the Engine.
-final class ElmixServer {
+class ElmixServer {
   const ElmixServer(this.engine);
 
   final ElmixEngine engine;

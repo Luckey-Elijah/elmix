@@ -7,7 +7,7 @@ import 'storage_adapter.dart';
 ///
 /// This deliberately starts tiny. The engine should grow use-case methods here
 /// while keeping HTTP, SQLite, admin UI, and CLI details outside the package.
-final class ElmixEngine {
+class ElmixEngine {
   ElmixEngine({required StorageAdapter storage}) : _storage = storage;
 
   final StorageAdapter _storage;

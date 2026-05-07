@@ -5,7 +5,7 @@ import 'record.dart';
 enum HookPhase { before, after }
 
 /// Context passed to collection lifecycle hooks.
-final class ActionHookContext {
+class ActionHookContext {
   const ActionHookContext({
     required this.collection,
     required this.operation,

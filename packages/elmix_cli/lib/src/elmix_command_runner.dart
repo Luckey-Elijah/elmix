@@ -1,5 +1,5 @@
 /// Minimal command boundary for the Elmix CLI.
-final class ElmixCommandRunner {
+class ElmixCommandRunner {
   const ElmixCommandRunner();
 
   String usage() {

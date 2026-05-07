@@ -4,7 +4,7 @@ import 'package:elmix_engine/elmix_engine.dart';
 ///
 /// Real SQLite persistence will be added once the Engine storage contract is
 /// stable enough to bind to a concrete database implementation.
-final class SqliteStorageAdapter implements StorageAdapter {
+class SqliteStorageAdapter implements StorageAdapter {
   final List<CollectionSchema> _schemas = [];
   final Map<String, List<Record>> _records = {};
 

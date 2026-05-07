@@ -1,4 +1,4 @@
-name: elmix_workspace
+name: elmix
 publish_to: none
 
 environment:
@@ -11,4 +11,3 @@ workspace:
   - packages/elmix_admin
   - packages/elmix_client
   - packages/elmix_cli
-

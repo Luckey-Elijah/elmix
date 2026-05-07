@@ -14,7 +14,7 @@ enum FieldType {
 }
 
 /// Persisted metadata for a field in a [CollectionSchema].
-final class SchemaField {
+class SchemaField {
   const SchemaField({
     required this.name,
     required this.type,
@@ -31,7 +31,7 @@ final class SchemaField {
 }
 
 /// Persisted runtime metadata that defines a collection.
-final class CollectionSchema {
+class CollectionSchema {
   const CollectionSchema({
     required this.name,
     required this.fields,

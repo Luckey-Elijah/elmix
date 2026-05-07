@@ -1,5 +1,5 @@
 /// Dynamic client entry point for an Elmix server.
-final class ElmixClient {
+class ElmixClient {
   ElmixClient(this.baseUrl);
 
   final Uri baseUrl;
@@ -21,7 +21,7 @@ final class ElmixClient {
 }
 
 /// Dynamic collection client boundary.
-final class CollectionClient {
+class CollectionClient {
   const CollectionClient._(this._client, this.name);
 
   final ElmixClient _client;
