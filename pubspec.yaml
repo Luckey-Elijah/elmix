@@ -13,4 +13,5 @@ workspace:
   - packages/elmix_cli
 
 dev_dependencies:
+  test: ^1.26.0
   very_good_analysis: ^10.2.0

@@ -38,4 +38,8 @@ class ActionHookContext {
 }
 
 /// A lifecycle extension point for collection operations.
-typedef ActionHook = Future<void> Function(ActionHookContext context);
+// ignore: one_member_abstracts
+abstract class ActionHook {
+  /// Runs this hook for [context].
+  Future<void> call(ActionHookContext context);
+}

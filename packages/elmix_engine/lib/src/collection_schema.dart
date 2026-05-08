@@ -30,6 +30,21 @@ enum FieldType {
   json,
 }
 
+/// The framework-level role a [SchemaField] plays, if any.
+enum FieldSystemRole {
+  /// A normal application-defined field.
+  none,
+
+  /// The required non-removable record identity field.
+  recordIdentifier,
+
+  /// The default created timestamp field.
+  created,
+
+  /// The default updated timestamp field.
+  updated,
+}
+
 /// Persisted metadata for a field in a [CollectionSchema].
 class SchemaField {
   /// Creates persisted metadata for a collection field.
@@ -37,8 +52,37 @@ class SchemaField {
     required this.name,
     required this.type,
     this.required = false,
+    this.removable = true,
+    this.systemRole = FieldSystemRole.none,
     this.targetCollection,
   });
+
+  /// Creates the required non-removable record identifier field.
+  const SchemaField.recordIdentifier()
+    : name = 'id',
+      type = FieldType.text,
+      required = true,
+      removable = false,
+      systemRole = FieldSystemRole.recordIdentifier,
+      targetCollection = null;
+
+  /// Creates the removable default created timestamp field.
+  const SchemaField.created()
+    : name = 'created',
+      type = FieldType.date,
+      required = false,
+      removable = true,
+      systemRole = FieldSystemRole.created,
+      targetCollection = null;
+
+  /// Creates the removable default updated timestamp field.
+  const SchemaField.updated()
+    : name = 'updated',
+      type = FieldType.date,
+      required = false,
+      removable = true,
+      systemRole = FieldSystemRole.updated,
+      targetCollection = null;
 
   /// The field name.
   final String name;
@@ -48,6 +92,12 @@ class SchemaField {
 
   /// Whether this field must be present for records in the collection.
   final bool required;
+
+  /// Whether this field may be removed from the collection schema.
+  final bool removable;
+
+  /// The framework-level role this field plays.
+  final FieldSystemRole systemRole;
 
   /// The target collection for relation fields.
   final String? targetCollection;
@@ -62,6 +112,22 @@ class CollectionSchema {
     required this.accessRules,
     this.isAuthCollection = false,
   });
+
+  /// Creates a collection schema whose records can authenticate.
+  const CollectionSchema.auth({
+    required this.name,
+    required this.fields,
+    required this.accessRules,
+  }) : isAuthCollection = true;
+
+  /// The default fields seeded into new collection schemas.
+  static List<SchemaField> defaultFields() {
+    return const <SchemaField>[
+      SchemaField.recordIdentifier(),
+      SchemaField.created(),
+      SchemaField.updated(),
+    ];
+  }
 
   /// The collection name.
   final String name;

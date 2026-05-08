@@ -21,14 +21,44 @@ class SqliteStorageAdapter implements StorageAdapter {
   }
 
   @override
+  Future<CollectionSchema?> getCollectionSchema(String name) async {
+    return _schemas.where((schema) => schema.name == name).firstOrNull;
+  }
+
+  @override
   Future<void> saveRecord(Record record) async {
     _records.putIfAbsent(record.collection, () => [])
-      ..removeWhere((existing) => existing.id == record.id)
+      ..removeWhere((existing) => existing.id.value == record.id.value)
       ..add(record);
   }
 
   @override
-  Future<List<Record>> listRecords(String collection) async {
-    return List.unmodifiable(_records[collection] ?? const []);
+  Future<Record?> getRecord({
+    required String collection,
+    required RecordIdentifier id,
+  }) async {
+    return (_records[collection] ?? const <Record>[])
+        .where((record) => record.id.value == id.value)
+        .firstOrNull;
+  }
+
+  @override
+  Future<RecordPage> listRecords({
+    required String collection,
+    QueryExpression query = const QueryExpression(),
+  }) async {
+    final records = _records[collection] ?? const <Record>[];
+    final start = (query.pagination.page - 1) * query.pagination.perPage;
+    final pageItems = records
+        .skip(start)
+        .take(query.pagination.perPage)
+        .toList();
+
+    return RecordPage(
+      items: List.unmodifiable(pageItems),
+      page: query.pagination.page,
+      perPage: query.pagination.perPage,
+      totalItems: records.length,
+    );
   }
 }

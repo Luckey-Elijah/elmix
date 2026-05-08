@@ -1,5 +1,6 @@
 import 'package:elmix_engine/src/action_hook.dart';
 import 'package:elmix_engine/src/collection_schema.dart';
+import 'package:elmix_engine/src/query_expression.dart';
 import 'package:elmix_engine/src/record.dart';
 import 'package:elmix_engine/src/storage_adapter.dart';
 
@@ -30,8 +31,11 @@ class ElmixEngine {
   }
 
   /// Lists records from [collection].
-  Future<List<Record>> listRecords(String collection) {
-    return _storage.listRecords(collection);
+  Future<RecordPage> listRecords({
+    required String collection,
+    QueryExpression query = const QueryExpression(),
+  }) {
+    return _storage.listRecords(collection: collection, query: query);
   }
 
   /// Adds a lifecycle [hook] to the engine.
