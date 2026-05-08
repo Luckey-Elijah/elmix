@@ -10,8 +10,9 @@ class SqliteStorageAdapter implements StorageAdapter {
 
   @override
   Future<void> saveCollectionSchema(CollectionSchema schema) async {
-    _schemas.removeWhere((existing) => existing.name == schema.name);
-    _schemas.add(schema);
+    _schemas
+      ..removeWhere((existing) => existing.name == schema.name)
+      ..add(schema);
   }
 
   @override
@@ -21,9 +22,9 @@ class SqliteStorageAdapter implements StorageAdapter {
 
   @override
   Future<void> saveRecord(Record record) async {
-    final records = _records.putIfAbsent(record.collection, () => []);
-    records.removeWhere((existing) => existing.id == record.id);
-    records.add(record);
+    _records.putIfAbsent(record.collection, () => [])
+      ..removeWhere((existing) => existing.id == record.id)
+      ..add(record);
   }
 
   @override

@@ -9,9 +9,8 @@ environment:
 
 dependencies:
   elmix_engine: 0.1.0-dev
-  elmix_sqlite: 0.1.0-dev
   elmix_server: 0.1.0-dev
+  elmix_sqlite: 0.1.0-dev
 
 executables:
   elmix: elmix
-
