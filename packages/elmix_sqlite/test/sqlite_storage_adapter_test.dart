@@ -51,5 +51,48 @@ void main() {
       );
       expect(page.totalItems, 2);
     });
+
+    test(
+      'filters by built-in id without requiring duplicated record data',
+      () async {
+        final storage = SqliteStorageAdapter();
+
+        await storage.saveRecord(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post_1'),
+            data: <String, Object?>{'title': 'First'},
+          ),
+        );
+        await storage.saveRecord(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post_2'),
+            data: <String, Object?>{'title': 'Second'},
+          ),
+        );
+
+        final record = await storage.getRecord(
+          collection: 'posts',
+          id: const RecordIdentifier('post_2'),
+        );
+        final page = await storage.listRecords(
+          collection: 'posts',
+          query: const QueryExpression(
+            filters: <QueryFilter>[
+              QueryFilter(
+                field: 'id',
+                operator: QueryOperator.equals,
+                value: 'post_2',
+              ),
+            ],
+          ),
+        );
+
+        expect(record?.id.value, 'post_2');
+        expect(page.items.map((record) => record.id.value), <String>['post_2']);
+        expect(page.totalItems, 1);
+      },
+    );
   });
 }

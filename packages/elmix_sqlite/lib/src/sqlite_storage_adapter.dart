@@ -37,10 +37,13 @@ class SqliteStorageAdapter implements StorageAdapter {
     required String collection,
     required RecordIdentifier id,
   }) async {
-    return (_records[collection] ?? const <Record>[])
-        .where((record) => record.id.value == id.value)
-        .firstOrNull;
+    return _getRecords(
+      collection,
+    ).where((record) => record.id.value == id.value).firstOrNull;
   }
+
+  List<Record> _getRecords(String collection) =>
+      _records[collection] ?? const <Record>[];
 
   @override
   Future<RecordPage> listRecords({
@@ -48,9 +51,9 @@ class SqliteStorageAdapter implements StorageAdapter {
     QueryExpression query = const QueryExpression(),
   }) async {
     final records =
-        (_records[collection] ?? const <Record>[])
-            .where((record) => _matchesFilters(record, query.filters))
-            .toList()
+        _getRecords(
+            collection,
+          ).where((record) => _matchesFilters(record, query.filters)).toList()
           ..sort((left, right) => _compareRecords(left, right, query.sort));
     final start = (query.pagination.page - 1) * query.pagination.perPage;
     final pageItems = records
@@ -68,7 +71,7 @@ class SqliteStorageAdapter implements StorageAdapter {
 
   static bool _matchesFilters(Record record, List<QueryFilter> filters) {
     return filters.every((filter) {
-      final value = record.data[filter.field];
+      final value = _fieldValue(record, filter.field);
 
       return switch (filter.operator) {
         QueryOperator.equals => value == filter.value,
@@ -94,8 +97,8 @@ class SqliteStorageAdapter implements StorageAdapter {
           : -1;
       final comparison =
           _compareValues(
-            left.data[instruction.field],
-            right.data[instruction.field],
+            _fieldValue(left, instruction.field),
+            _fieldValue(right, instruction.field),
           ) *
           direction;
 
@@ -105,6 +108,14 @@ class SqliteStorageAdapter implements StorageAdapter {
     }
 
     return 0;
+  }
+
+  static Object? _fieldValue(Record record, String field) {
+    if (field == 'id') {
+      return record.id.value;
+    }
+
+    return record.data[field];
   }
 
   static int _compareValues(Object? left, Object? right) {
