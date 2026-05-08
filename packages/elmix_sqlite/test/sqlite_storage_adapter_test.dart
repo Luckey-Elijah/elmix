@@ -94,5 +94,56 @@ void main() {
         expect(page.totalItems, 1);
       },
     );
+
+    test('excludes missing values from range filters', () async {
+      final storage = SqliteStorageAdapter();
+
+      await storage.saveRecord(
+        const Record(
+          collection: 'posts',
+          id: RecordIdentifier('missing_score'),
+          data: <String, Object?>{'title': 'Missing score'},
+        ),
+      );
+      await storage.saveRecord(
+        const Record(
+          collection: 'posts',
+          id: RecordIdentifier('null_score'),
+          data: <String, Object?>{'score': null},
+        ),
+      );
+      await storage.saveRecord(
+        const Record(
+          collection: 'posts',
+          id: RecordIdentifier('low_score'),
+          data: <String, Object?>{'score': 5},
+        ),
+      );
+      await storage.saveRecord(
+        const Record(
+          collection: 'posts',
+          id: RecordIdentifier('high_score'),
+          data: <String, Object?>{'score': 20},
+        ),
+      );
+
+      final page = await storage.listRecords(
+        collection: 'posts',
+        query: const QueryExpression(
+          filters: <QueryFilter>[
+            QueryFilter(
+              field: 'score',
+              operator: QueryOperator.greaterThan,
+              value: 10,
+            ),
+          ],
+        ),
+      );
+
+      expect(page.items.map((record) => record.id.value), <String>[
+        'high_score',
+      ]);
+      expect(page.totalItems, 1);
+    });
   });
 }

@@ -76,12 +76,26 @@ class SqliteStorageAdapter implements StorageAdapter {
       return switch (filter.operator) {
         QueryOperator.equals => value == filter.value,
         QueryOperator.notEquals => value != filter.value,
-        QueryOperator.greaterThan => _compareValues(value, filter.value) > 0,
-        QueryOperator.greaterThanOrEquals =>
-          _compareValues(value, filter.value) >= 0,
-        QueryOperator.lessThan => _compareValues(value, filter.value) < 0,
-        QueryOperator.lessThanOrEquals =>
-          _compareValues(value, filter.value) <= 0,
+        QueryOperator.greaterThan => _matchesRange(
+          value,
+          filter.value,
+          (comparison) => comparison > 0,
+        ),
+        QueryOperator.greaterThanOrEquals => _matchesRange(
+          value,
+          filter.value,
+          (comparison) => comparison >= 0,
+        ),
+        QueryOperator.lessThan => _matchesRange(
+          value,
+          filter.value,
+          (comparison) => comparison < 0,
+        ),
+        QueryOperator.lessThanOrEquals => _matchesRange(
+          value,
+          filter.value,
+          (comparison) => comparison <= 0,
+        ),
       };
     });
   }
@@ -116,6 +130,18 @@ class SqliteStorageAdapter implements StorageAdapter {
     }
 
     return record.data[field];
+  }
+
+  static bool _matchesRange(
+    Object? left,
+    Object? right,
+    bool Function(int comparison) predicate,
+  ) {
+    if (left == null || right == null) {
+      return false;
+    }
+
+    return predicate(_compareValues(left, right));
   }
 
   static int _compareValues(Object? left, Object? right) {
