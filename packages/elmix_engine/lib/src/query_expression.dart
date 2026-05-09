@@ -95,3 +95,15 @@ class QueryExpression {
   /// Pagination instructions for the result.
   final QueryPagination pagination;
 }
+
+/// Thrown when query criteria are outside the Engine query contract.
+class QueryExpressionException implements Exception {
+  /// Creates a query contract failure with a human-readable [message].
+  const QueryExpressionException(this.message);
+
+  /// Describes why the query expression is unsupported.
+  final String message;
+
+  @override
+  String toString() => 'QueryExpressionException: $message';
+}

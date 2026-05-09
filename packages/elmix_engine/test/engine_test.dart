@@ -112,6 +112,360 @@ void main() {
   });
 
   group('ElmixEngine records', () {
+    test(
+      'authorizes collection requests with auth records from any auth '
+      'collection',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        await engine.registerCollection(
+          const CollectionSchema.auth(
+            name: 'members',
+            fields: [
+              SchemaField(name: 'email', type: FieldType.email),
+            ],
+            accessRules: {},
+          ),
+        );
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: [
+              SchemaField(name: 'title', type: FieldType.text),
+            ],
+            accessRules: {
+              CollectionOperation.list: AccessRule(
+                'auth.collection == "members" && auth.id == "member-1"',
+              ),
+            },
+          ),
+        );
+        await engine
+            .collection('posts')
+            .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post-1'),
+                data: {'title': 'Member post'},
+              ),
+            );
+
+        final page = await engine
+            .collection(
+              'posts',
+              context: const RequestContext(
+                authRecord: AuthRecordIdentity(
+                  collection: 'members',
+                  id: RecordIdentifier('member-1'),
+                ),
+              ),
+            )
+            .list();
+
+        expect(page.items.map((record) => record.id.value), ['post-1']);
+      },
+    );
+
+    test(
+      'evaluates access rules before collection hooks for all operations',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        final hook = RecordingActionHook();
+        engine.addHook(hook);
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: [
+              SchemaField(name: 'title', type: FieldType.text),
+              SchemaField(name: 'views', type: FieldType.number),
+            ],
+            accessRules: {
+              CollectionOperation.list: AccessRule('true'),
+              CollectionOperation.view: AccessRule('record.id == "post-1"'),
+              CollectionOperation.create: AccessRule(
+                'request.data.title == "Allowed"',
+              ),
+              CollectionOperation.update: AccessRule(
+                'record.data.views >= 10 && auth.id != ""',
+              ),
+              CollectionOperation.delete: AccessRule(
+                'auth.collection == "members" && '
+                'record.data.title != "Protected"',
+              ),
+            },
+          ),
+        );
+        final posts = engine.collection(
+          'posts',
+          context: const RequestContext(
+            authRecord: AuthRecordIdentity(
+              collection: 'members',
+              id: RecordIdentifier('member-1'),
+            ),
+          ),
+        );
+
+        await posts.create(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-1'),
+            data: {'title': 'Allowed', 'views': 10},
+          ),
+        );
+        expect(
+          await posts.get(const RecordIdentifier('post-1')),
+          isA<Record>(),
+        );
+        await posts.update(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-1'),
+            data: {'title': 'Allowed', 'views': 12},
+          ),
+        );
+        expect((await posts.list()).items.map((record) => record.id.value), [
+          'post-1',
+        ]);
+
+        final hookCountBeforeDeniedRequest = hook.contexts.length;
+        await expectLater(
+          posts.create(
+            const Record(
+              collection: 'posts',
+              id: RecordIdentifier('post-2'),
+              data: {'title': 'Denied', 'views': 99},
+            ),
+          ),
+          throwsA(isA<AuthorizationException>()),
+        );
+        expect(hook.contexts, hasLength(hookCountBeforeDeniedRequest));
+
+        await posts.delete(const RecordIdentifier('post-1'));
+        expect(
+          await storage.getRecord(
+            collection: 'posts',
+            id: const RecordIdentifier('post-1'),
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'runs collection hooks around authorized collection operations',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        final hook = RecordingActionHook();
+        engine.addHook(hook);
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: [
+              SchemaField(name: 'title', type: FieldType.text),
+            ],
+            accessRules: {
+              CollectionOperation.create: AccessRule('auth.id == "member-1"'),
+            },
+          ),
+        );
+
+        await engine
+            .collection(
+              'posts',
+              context: const RequestContext(
+                authRecord: AuthRecordIdentity(
+                  collection: 'members',
+                  id: RecordIdentifier('member-1'),
+                ),
+              ),
+            )
+            .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post-1'),
+                data: {'title': 'Hooked'},
+              ),
+            );
+
+        expect(
+          hook.contexts.map(
+            (context) => (
+              context.collection,
+              context.operation,
+              context.phase,
+              context.record?.id.value,
+              context.authRecord?.collection,
+              context.authRecord?.id.value,
+            ),
+          ),
+          [
+            (
+              'posts',
+              CollectionOperation.create,
+              HookPhase.before,
+              'post-1',
+              'members',
+              'member-1',
+            ),
+            (
+              'posts',
+              CollectionOperation.create,
+              HookPhase.after,
+              'post-1',
+              'members',
+              'member-1',
+            ),
+          ],
+        );
+      },
+    );
+
+    test(
+      'lists records with field comparisons, sorting, and pagination',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: [
+              SchemaField(name: 'title', type: FieldType.text),
+              SchemaField(name: 'published', type: FieldType.bool),
+              SchemaField(name: 'views', type: FieldType.number),
+            ],
+            accessRules: {},
+          ),
+        );
+        final posts = engine.collection('posts');
+
+        await posts.create(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-1'),
+            data: {'title': 'Draft', 'published': false, 'views': 100},
+          ),
+        );
+        await posts.create(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-2'),
+            data: {'title': 'Popular', 'published': true, 'views': 50},
+          ),
+        );
+        await posts.create(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-3'),
+            data: {'title': 'Launch', 'published': true, 'views': 10},
+          ),
+        );
+
+        final page = await posts.list(
+          query: const QueryExpression(
+            filters: [
+              QueryFilter(
+                field: 'published',
+                operator: QueryOperator.equals,
+                value: true,
+              ),
+              QueryFilter(
+                field: 'views',
+                operator: QueryOperator.greaterThanOrEquals,
+                value: 10,
+              ),
+            ],
+            sort: [
+              QuerySort(field: 'views', direction: SortDirection.descending),
+            ],
+            pagination: QueryPagination(page: 2, perPage: 1),
+          ),
+        );
+
+        expect(page.items.map((record) => record.id.value), ['post-3']);
+        expect(page.page, 2);
+        expect(page.perPage, 1);
+        expect(page.totalItems, 2);
+      },
+    );
+
+    test(
+      'rejects unsupported query behavior outside the Engine contract',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: [
+              SchemaField(name: 'author', type: FieldType.relation),
+            ],
+            accessRules: {},
+          ),
+        );
+
+        await expectLater(
+          engine
+              .collection('posts')
+              .list(
+                query: const QueryExpression(
+                  filters: [
+                    QueryFilter(
+                      field: 'author.name',
+                      operator: QueryOperator.equals,
+                      value: 'Ada',
+                    ),
+                  ],
+                ),
+              ),
+          throwsA(isA<QueryExpressionException>()),
+        );
+      },
+    );
+
+    test('runs hooks around authentication actions', () async {
+      final storage = InMemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final hook = RecordingAuthenticationActionHook();
+      engine.addAuthenticationHook(hook);
+
+      final authRecord = await engine.runAuthenticationAction(
+        collection: 'members',
+        action: AuthenticationOperation.authenticate,
+        run: () async => const AuthRecordIdentity(
+          collection: 'members',
+          id: RecordIdentifier('member-1'),
+        ),
+      );
+
+      expect(authRecord.id.value, 'member-1');
+      expect(
+        hook.contexts.map(
+          (context) => (
+            context.collection,
+            context.action,
+            context.phase,
+            context.authRecord?.id.value,
+          ),
+        ),
+        [
+          (
+            'members',
+            AuthenticationOperation.authenticate,
+            HookPhase.before,
+            null,
+          ),
+          (
+            'members',
+            AuthenticationOperation.authenticate,
+            HookPhase.after,
+            'member-1',
+          ),
+        ],
+      );
+    });
+
     test('creates, lists, views, updates, and deletes records', () async {
       final storage = InMemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);
@@ -403,14 +757,30 @@ class InMemoryStorageAdapter implements StorageAdapter {
     required String collection,
     QueryExpression query = const QueryExpression(),
   }) async {
-    final items = List<Record>.unmodifiable(
-      _records[collection]?.values ?? const <Record>[],
-    );
+    final matching =
+        (_records[collection]?.values ?? const <Record>[])
+            .where(
+              (record) =>
+                  query.filters.every((filter) => _matches(record, filter)),
+            )
+            .toList()
+          ..sort((left, right) => _compareRecords(left, right, query.sort));
+
+    final start = (query.pagination.page - 1) * query.pagination.perPage;
+    final end = start + query.pagination.perPage;
+    final items = start >= matching.length
+        ? const <Record>[]
+        : List<Record>.unmodifiable(
+            matching.sublist(
+              start,
+              end > matching.length ? matching.length : end,
+            ),
+          );
     return RecordPage(
       items: items,
       page: query.pagination.page,
       perPage: query.pagination.perPage,
-      totalItems: items.length,
+      totalItems: matching.length,
     );
   }
 
@@ -460,5 +830,76 @@ class InMemoryStorageAdapter implements StorageAdapter {
       id: RecordIdentifier(nextId),
       data: record.data,
     );
+  }
+
+  bool _matches(Record record, QueryFilter filter) {
+    final value = filter.field == 'id'
+        ? record.id.value
+        : record.data[filter.field];
+    final comparison = _compareValues(value, filter.value);
+    return switch (filter.operator) {
+      QueryOperator.equals => value == filter.value,
+      QueryOperator.notEquals => value != filter.value,
+      QueryOperator.greaterThan => comparison > 0,
+      QueryOperator.greaterThanOrEquals => comparison >= 0,
+      QueryOperator.lessThan => comparison < 0,
+      QueryOperator.lessThanOrEquals => comparison <= 0,
+    };
+  }
+
+  int _compareRecords(
+    Record left,
+    Record right,
+    List<QuerySort> sort,
+  ) {
+    for (final instruction in sort) {
+      final leftValue = instruction.field == 'id'
+          ? left.id.value
+          : left.data[instruction.field];
+      final rightValue = instruction.field == 'id'
+          ? right.id.value
+          : right.data[instruction.field];
+      final comparison = _compareValues(leftValue, rightValue);
+      if (comparison != 0) {
+        return instruction.direction == SortDirection.ascending
+            ? comparison
+            : -comparison;
+      }
+    }
+    return 0;
+  }
+
+  int _compareValues(Object? left, Object? right) {
+    return switch ((left, right)) {
+      (final num left, final num right) => left.compareTo(right),
+      (final String left, final String right) => left.compareTo(right),
+      (final bool left, final bool right) =>
+        left == right
+            ? 0
+            : left
+            ? 1
+            : -1,
+      (final DateTime left, final DateTime right) => left.compareTo(right),
+      _ => left == right ? 0 : -1,
+    };
+  }
+}
+
+class RecordingActionHook extends ActionHook {
+  final List<ActionHookContext> contexts = <ActionHookContext>[];
+
+  @override
+  Future<void> call(ActionHookContext context) async {
+    contexts.add(context);
+  }
+}
+
+class RecordingAuthenticationActionHook extends AuthenticationActionHook {
+  final List<AuthenticationActionHookContext> contexts =
+      <AuthenticationActionHookContext>[];
+
+  @override
+  Future<void> call(AuthenticationActionHookContext context) async {
+    contexts.add(context);
   }
 }
