@@ -77,14 +77,27 @@ class CollectionHandle {
   final StorageAdapter _storage;
 
   /// Creates [record] in this collection.
-  Future<void> create(Record record) async {
-    await _validateRecord(record);
+  Future<Record> create(Record record) async {
+    await _validateRecord(record, requireIdentifier: false);
+    if (record.id.value.trim().isNotEmpty) {
+      final existing = await _storage.getRecord(
+        collection: name,
+        id: record.id,
+      );
+      if (existing != null) {
+        throw RecordValidationException(
+          'Record "${record.id.value}" already exists in collection "$name".',
+        );
+      }
+    }
+
     return _storage.putRecord(record);
   }
 
   /// Saves [record] to this collection.
-  Future<void> save(Record record) {
-    return create(record);
+  Future<Record> save(Record record) async {
+    await _validateRecord(record, requireIdentifier: false);
+    return _storage.putRecord(record);
   }
 
   /// Gets a record by exact [id].
@@ -93,7 +106,7 @@ class CollectionHandle {
   }
 
   /// Updates [record] in this collection.
-  Future<void> update(Record record) async {
+  Future<Record> update(Record record) async {
     await _validateRecord(record);
     return _storage.putRecord(record);
   }
@@ -110,7 +123,10 @@ class CollectionHandle {
     return _storage.deleteRecord(collection: name, id: id);
   }
 
-  Future<void> _validateRecord(Record record) async {
+  Future<void> _validateRecord(
+    Record record, {
+    bool requireIdentifier = true,
+  }) async {
     if (record.collection != name) {
       throw RecordCollectionMismatchException(
         expectedCollection: name,
@@ -118,7 +134,7 @@ class CollectionHandle {
       );
     }
 
-    if (record.id.value.trim().isEmpty) {
+    if (requireIdentifier && record.id.value.trim().isEmpty) {
       throw const RecordValidationException('Record id is required.');
     }
 
@@ -129,7 +145,20 @@ class CollectionHandle {
       );
     }
 
-    for (final field in schema.fields) {
+    final dataFields = schema.fields
+        .where((field) => field.systemRole != FieldSystemRole.recordIdentifier)
+        .toList();
+    final dataFieldNames = dataFields.map((field) => field.name).toSet();
+
+    for (final fieldName in record.data.keys) {
+      if (!dataFieldNames.contains(fieldName)) {
+        throw RecordValidationException(
+          'Field "$fieldName" is not declared by collection "$name".',
+        );
+      }
+    }
+
+    for (final field in dataFields) {
       if (field.systemRole == FieldSystemRole.recordIdentifier) {
         continue;
       }

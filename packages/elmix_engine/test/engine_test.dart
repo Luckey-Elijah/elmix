@@ -159,6 +159,77 @@ void main() {
     });
 
     test(
+      'does not create a record when its identifier already exists',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        const schema = CollectionSchema(
+          name: 'posts',
+          fields: [
+            SchemaField(name: 'title', type: FieldType.text),
+          ],
+          accessRules: {},
+        );
+        final posts = engine.collection('posts');
+
+        await engine.registerCollection(schema);
+        await posts.create(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-1'),
+            data: {'title': 'First post'},
+          ),
+        );
+
+        await expectLater(
+          posts.create(
+            const Record(
+              collection: 'posts',
+              id: RecordIdentifier('post-1'),
+              data: {'title': 'Replacement post'},
+            ),
+          ),
+          throwsA(isA<RecordValidationException>()),
+        );
+
+        expect(
+          (await posts.get(const RecordIdentifier('post-1')))?.data,
+          {'title': 'First post'},
+        );
+      },
+    );
+
+    test('allows backing storage to assign identifiers on create', () async {
+      final storage = InMemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      const schema = CollectionSchema(
+        name: 'posts',
+        fields: [
+          SchemaField(name: 'title', type: FieldType.text),
+        ],
+        accessRules: {},
+      );
+
+      await engine.registerCollection(schema);
+
+      final created = await engine
+          .collection('posts')
+          .create(
+            const Record(
+              collection: 'posts',
+              id: RecordIdentifier(''),
+              data: {'title': 'Generated id'},
+            ),
+          );
+
+      expect(created.id.value, isNotEmpty);
+      expect(
+        (await engine.collection('posts').get(created.id))?.data,
+        {'title': 'Generated id'},
+      );
+    });
+
+    test(
       'validates record writes against supported schema field types',
       () async {
         final storage = InMemoryStorageAdapter();
@@ -224,7 +295,7 @@ void main() {
       },
     );
 
-    test('requires every record to have a non-empty identifier', () async {
+    test('rejects record writes with undeclared data fields', () async {
       final storage = InMemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);
 
@@ -242,6 +313,37 @@ void main() {
         engine
             .collection('posts')
             .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post-1'),
+                data: {
+                  'title': 'First post',
+                  'published': true,
+                },
+              ),
+            ),
+        throwsA(isA<RecordValidationException>()),
+      );
+    });
+
+    test('requires updates to have a non-empty identifier', () async {
+      final storage = InMemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: [
+            SchemaField(name: 'title', type: FieldType.text),
+          ],
+          accessRules: {},
+        ),
+      );
+
+      await expectLater(
+        engine
+            .collection('posts')
+            .update(
               const Record(
                 collection: 'posts',
                 id: RecordIdentifier(''),
@@ -298,8 +400,10 @@ class InMemoryStorageAdapter implements StorageAdapter {
   }
 
   @override
-  Future<void> putRecord(Record record) async {
-    _records.putIfAbsent(record.collection, () => {})[record.id.value] = record;
+  Future<Record> putRecord(Record record) async {
+    final stored = _recordWithStorageIdentifier(record);
+    _records.putIfAbsent(stored.collection, () => {})[stored.id.value] = stored;
+    return stored;
   }
 
   @override
@@ -308,5 +412,25 @@ class InMemoryStorageAdapter implements StorageAdapter {
     required RecordIdentifier id,
   }) async {
     _records[collection]?.remove(id.value);
+  }
+
+  Record _recordWithStorageIdentifier(Record record) {
+    if (record.id.value.trim().isNotEmpty) {
+      return record;
+    }
+
+    final collectionRecords = _records[record.collection] ?? const {};
+    var next = collectionRecords.length + 1;
+    var nextId = '${record.collection}-$next';
+    while (collectionRecords.containsKey(nextId)) {
+      next += 1;
+      nextId = '${record.collection}-$next';
+    }
+
+    return Record(
+      collection: record.collection,
+      id: RecordIdentifier(nextId),
+      data: record.data,
+    );
   }
 }

@@ -217,8 +217,9 @@ class MemoryStorageAdapter extends StorageAdapter {
   }
 
   @override
-  Future<void> putRecord(Record record) async {
+  Future<Record> putRecord(Record record) async {
     _records.add(record);
+    return record;
   }
 
   @override

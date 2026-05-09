@@ -14,7 +14,10 @@ abstract class StorageAdapter {
   Future<List<CollectionSchema>> listCollectionSchemas();
 
   /// Stores [record], replacing any existing stored record with the same id.
-  Future<void> putRecord(Record record);
+  ///
+  /// Adapters may assign an identifier when [record] has a blank id, and should
+  /// return the stored representation.
+  Future<Record> putRecord(Record record);
 
   /// Loads one record by collection and [id].
   Future<Record?> getRecord({

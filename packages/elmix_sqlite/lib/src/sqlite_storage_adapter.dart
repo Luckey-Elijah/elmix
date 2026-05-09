@@ -26,10 +26,13 @@ class SqliteStorageAdapter implements StorageAdapter {
   }
 
   @override
-  Future<void> putRecord(Record record) async {
-    _records.putIfAbsent(record.collection, () => [])
-      ..removeWhere((existing) => existing.id.value == record.id.value)
-      ..add(record);
+  Future<Record> putRecord(Record record) async {
+    final stored = _recordWithStorageIdentifier(record);
+    _records.putIfAbsent(stored.collection, () => [])
+      ..removeWhere((existing) => existing.id.value == stored.id.value)
+      ..add(stored);
+
+    return stored;
   }
 
   @override
@@ -76,6 +79,26 @@ class SqliteStorageAdapter implements StorageAdapter {
 
   List<Record> _getRecords(String collection) =>
       _records[collection] ?? const <Record>[];
+
+  Record _recordWithStorageIdentifier(Record record) {
+    if (record.id.value.trim().isNotEmpty) {
+      return record;
+    }
+
+    final records = _getRecords(record.collection);
+    var next = records.length + 1;
+    var nextId = '${record.collection}_$next';
+    while (records.any((existing) => existing.id.value == nextId)) {
+      next += 1;
+      nextId = '${record.collection}_$next';
+    }
+
+    return Record(
+      collection: record.collection,
+      id: RecordIdentifier(nextId),
+      data: record.data,
+    );
+  }
 
   static bool _matchesFilters(Record record, List<QueryFilter> filters) {
     return filters.every((filter) {
