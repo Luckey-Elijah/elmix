@@ -413,6 +413,112 @@ void main() {
     );
 
     test(
+      'runs before and after collection hooks for every operation',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        final hook = RecordingActionHook();
+        engine.addHook(hook);
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: [
+              SchemaField(name: 'title', type: FieldType.text),
+            ],
+            accessRules: {
+              CollectionOperation.list: AccessRule('true'),
+              CollectionOperation.view: AccessRule('true'),
+              CollectionOperation.create: AccessRule('true'),
+              CollectionOperation.update: AccessRule('true'),
+              CollectionOperation.delete: AccessRule('true'),
+            },
+          ),
+        );
+
+        final posts = engine.collection('posts');
+        await posts.create(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-1'),
+            data: {'title': 'Hooked'},
+          ),
+        );
+        await posts.get(const RecordIdentifier('post-1'));
+        await posts.update(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-1'),
+            data: {'title': 'Updated'},
+          ),
+        );
+        await posts.list();
+        await posts.delete(const RecordIdentifier('post-1'));
+
+        expect(
+          hook.contexts.map(
+            (context) => (
+              context.operation,
+              context.phase,
+              context.record?.id.value,
+            ),
+          ),
+          [
+            (
+              CollectionOperation.create,
+              HookPhase.before,
+              'post-1',
+            ),
+            (
+              CollectionOperation.create,
+              HookPhase.after,
+              'post-1',
+            ),
+            (
+              CollectionOperation.view,
+              HookPhase.before,
+              'post-1',
+            ),
+            (
+              CollectionOperation.view,
+              HookPhase.after,
+              'post-1',
+            ),
+            (
+              CollectionOperation.update,
+              HookPhase.before,
+              'post-1',
+            ),
+            (
+              CollectionOperation.update,
+              HookPhase.after,
+              'post-1',
+            ),
+            (
+              CollectionOperation.list,
+              HookPhase.before,
+              null,
+            ),
+            (
+              CollectionOperation.list,
+              HookPhase.after,
+              null,
+            ),
+            (
+              CollectionOperation.delete,
+              HookPhase.before,
+              'post-1',
+            ),
+            (
+              CollectionOperation.delete,
+              HookPhase.after,
+              'post-1',
+            ),
+          ],
+        );
+      },
+    );
+
+    test(
       'lists records with field comparisons, sorting, and pagination',
       () async {
         final storage = InMemoryStorageAdapter();
