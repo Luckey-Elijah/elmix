@@ -60,6 +60,49 @@ void main() {
       },
     );
 
+    test('lists persisted collection schemas by name', () async {
+      final storage = SqliteStorageAdapter();
+      addTearDown(storage.close);
+
+      await storage.putCollectionSchema(
+        _schemaWithName(
+          'posts',
+          const <SchemaField>[
+            SchemaField(name: 'title', type: FieldType.text),
+          ],
+        ),
+      );
+      await storage.putCollectionSchema(
+        _schemaWithName(
+          'members',
+          const <SchemaField>[
+            SchemaField(name: 'email', type: FieldType.email),
+          ],
+        ),
+      );
+
+      final schemas = await storage.listCollectionSchemas();
+
+      expect(schemas.map((schema) => schema.name), <String>[
+        'members',
+        'posts',
+      ]);
+      expect(
+        schemas
+            .firstWhere((schema) => schema.name == 'members')
+            .fields
+            .map((field) => field.name),
+        <String>['id', 'email'],
+      );
+      expect(
+        schemas
+            .firstWhere((schema) => schema.name == 'posts')
+            .fields
+            .map((field) => field.name),
+        <String>['id', 'title'],
+      );
+    });
+
     test(
       'stores and retrieves schema-backed records across reopened databases',
       () async {
@@ -380,8 +423,12 @@ File _temporaryDatabaseFile() {
 }
 
 CollectionSchema _postsSchemaWithFields(List<SchemaField> fields) {
+  return _schemaWithName('posts', fields);
+}
+
+CollectionSchema _schemaWithName(String name, List<SchemaField> fields) {
   return CollectionSchema(
-    name: 'posts',
+    name: name,
     fields: <SchemaField>[
       const SchemaField.recordIdentifier(),
       ...fields,
