@@ -26,6 +26,30 @@ class Record {
   final Map<String, Object?> data;
 }
 
+/// Thrown when record data does not satisfy its collection schema.
+class RecordValidationException implements Exception {
+  /// Creates a validation failure with a human-readable [message].
+  const RecordValidationException(this.message);
+
+  /// Describes why validation failed.
+  final String message;
+
+  @override
+  String toString() => 'RecordValidationException: $message';
+}
+
+/// Thrown when record operations are used through the wrong collection handle.
+class RecordCollectionMismatchException extends RecordValidationException {
+  /// Creates a collection mismatch validation failure.
+  const RecordCollectionMismatchException({
+    required String expectedCollection,
+    required String actualCollection,
+  }) : super(
+         'Expected record for collection "$expectedCollection", '
+         'but received "$actualCollection".',
+       );
+}
+
 /// A paginated record listing result.
 class RecordPage {
   /// Creates a page of records.

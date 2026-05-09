@@ -110,8 +110,8 @@ void main() {
           pagination: QueryPagination(page: 2, perPage: 10),
         );
 
-        await storage.saveCollectionSchema(schema);
-        await storage.saveRecord(
+        await storage.putCollectionSchema(schema);
+        await storage.putRecord(
           const Record(
             collection: 'posts',
             id: RecordIdentifier('post_1'),
@@ -212,12 +212,24 @@ class MemoryStorageAdapter extends StorageAdapter {
   }
 
   @override
-  Future<void> saveCollectionSchema(CollectionSchema schema) async {
+  Future<void> putCollectionSchema(CollectionSchema schema) async {
     _schemas[schema.name] = schema;
   }
 
   @override
-  Future<void> saveRecord(Record record) async {
+  Future<Record> putRecord(Record record) async {
     _records.add(record);
+    return record;
+  }
+
+  @override
+  Future<void> deleteRecord({
+    required String collection,
+    required RecordIdentifier id,
+  }) async {
+    _records.removeWhere(
+      (record) =>
+          record.collection == collection && record.id.value == id.value,
+    );
   }
 }

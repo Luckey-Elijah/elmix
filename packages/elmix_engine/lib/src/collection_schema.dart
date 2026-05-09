@@ -141,3 +141,15 @@ class CollectionSchema {
   /// Whether this collection stores authentication records.
   final bool isAuthCollection;
 }
+
+/// Thrown when a collection schema cannot be registered or updated.
+class CollectionSchemaException implements Exception {
+  /// Creates a schema failure with a human-readable [message].
+  const CollectionSchemaException(this.message);
+
+  /// Describes why the schema operation failed.
+  final String message;
+
+  @override
+  String toString() => 'CollectionSchemaException: $message';
+}

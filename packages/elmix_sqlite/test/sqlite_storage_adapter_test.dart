@@ -7,21 +7,21 @@ void main() {
     test('applies query filters and sorting when listing records', () async {
       final storage = SqliteStorageAdapter();
 
-      await storage.saveRecord(
+      await storage.putRecord(
         const Record(
           collection: 'posts',
           id: RecordIdentifier('draft_high'),
           data: <String, Object?>{'published': false, 'score': 100},
         ),
       );
-      await storage.saveRecord(
+      await storage.putRecord(
         const Record(
           collection: 'posts',
           id: RecordIdentifier('published_low'),
           data: <String, Object?>{'published': true, 'score': 10},
         ),
       );
-      await storage.saveRecord(
+      await storage.putRecord(
         const Record(
           collection: 'posts',
           id: RecordIdentifier('published_high'),
@@ -57,14 +57,14 @@ void main() {
       () async {
         final storage = SqliteStorageAdapter();
 
-        await storage.saveRecord(
+        await storage.putRecord(
           const Record(
             collection: 'posts',
             id: RecordIdentifier('post_1'),
             data: <String, Object?>{'title': 'First'},
           ),
         );
-        await storage.saveRecord(
+        await storage.putRecord(
           const Record(
             collection: 'posts',
             id: RecordIdentifier('post_2'),
@@ -98,28 +98,28 @@ void main() {
     test('excludes missing values from range filters', () async {
       final storage = SqliteStorageAdapter();
 
-      await storage.saveRecord(
+      await storage.putRecord(
         const Record(
           collection: 'posts',
           id: RecordIdentifier('missing_score'),
           data: <String, Object?>{'title': 'Missing score'},
         ),
       );
-      await storage.saveRecord(
+      await storage.putRecord(
         const Record(
           collection: 'posts',
           id: RecordIdentifier('null_score'),
           data: <String, Object?>{'score': null},
         ),
       );
-      await storage.saveRecord(
+      await storage.putRecord(
         const Record(
           collection: 'posts',
           id: RecordIdentifier('low_score'),
           data: <String, Object?>{'score': 5},
         ),
       );
-      await storage.saveRecord(
+      await storage.putRecord(
         const Record(
           collection: 'posts',
           id: RecordIdentifier('high_score'),

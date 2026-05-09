@@ -9,15 +9,10 @@ class SqliteStorageAdapter implements StorageAdapter {
   final Map<String, List<Record>> _records = {};
 
   @override
-  Future<void> saveCollectionSchema(CollectionSchema schema) async {
+  Future<void> putCollectionSchema(CollectionSchema schema) async {
     _schemas
       ..removeWhere((existing) => existing.name == schema.name)
       ..add(schema);
-  }
-
-  @override
-  Future<List<CollectionSchema>> listCollectionSchemas() async {
-    return List.unmodifiable(_schemas);
   }
 
   @override
@@ -26,10 +21,18 @@ class SqliteStorageAdapter implements StorageAdapter {
   }
 
   @override
-  Future<void> saveRecord(Record record) async {
-    _records.putIfAbsent(record.collection, () => [])
-      ..removeWhere((existing) => existing.id.value == record.id.value)
-      ..add(record);
+  Future<List<CollectionSchema>> listCollectionSchemas() async {
+    return List.unmodifiable(_schemas);
+  }
+
+  @override
+  Future<Record> putRecord(Record record) async {
+    final stored = _recordWithStorageIdentifier(record);
+    _records.putIfAbsent(stored.collection, () => [])
+      ..removeWhere((existing) => existing.id.value == stored.id.value)
+      ..add(stored);
+
+    return stored;
   }
 
   @override
@@ -41,9 +44,6 @@ class SqliteStorageAdapter implements StorageAdapter {
       collection,
     ).where((record) => record.id.value == id.value).firstOrNull;
   }
-
-  List<Record> _getRecords(String collection) =>
-      _records[collection] ?? const <Record>[];
 
   @override
   Future<RecordPage> listRecords({
@@ -66,6 +66,37 @@ class SqliteStorageAdapter implements StorageAdapter {
       page: query.pagination.page,
       perPage: query.pagination.perPage,
       totalItems: records.length,
+    );
+  }
+
+  @override
+  Future<void> deleteRecord({
+    required String collection,
+    required RecordIdentifier id,
+  }) async {
+    _records[collection]?.removeWhere((record) => record.id.value == id.value);
+  }
+
+  List<Record> _getRecords(String collection) =>
+      _records[collection] ?? const <Record>[];
+
+  Record _recordWithStorageIdentifier(Record record) {
+    if (record.id.value.trim().isNotEmpty) {
+      return record;
+    }
+
+    final records = _getRecords(record.collection);
+    var next = records.length + 1;
+    var nextId = '${record.collection}_$next';
+    while (records.any((existing) => existing.id.value == nextId)) {
+      next += 1;
+      nextId = '${record.collection}_$next';
+    }
+
+    return Record(
+      collection: record.collection,
+      id: RecordIdentifier(nextId),
+      data: record.data,
     );
   }
 
