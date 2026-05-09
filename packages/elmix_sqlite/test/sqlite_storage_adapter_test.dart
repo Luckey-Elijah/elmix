@@ -1,11 +1,328 @@
+import 'dart:io';
+
 import 'package:elmix_engine/elmix_engine.dart';
 import 'package:elmix_sqlite/elmix_sqlite.dart';
 import 'package:test/test.dart';
 
 void main() {
   group('SqliteStorageAdapter', () {
+    test(
+      'persists collection schemas across reopened SQLite databases',
+      () async {
+        final databaseFile = _temporaryDatabaseFile();
+        final firstStorage = SqliteStorageAdapter.open(databaseFile.path);
+        final firstEngine = ElmixEngine(storage: firstStorage);
+        const schema = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(
+              name: 'author',
+              type: FieldType.relation,
+              targetCollection: 'users',
+            ),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{
+            CollectionOperation.list: AccessRule('true'),
+          },
+        );
+
+        await firstEngine.registerCollection(schema);
+        firstStorage.close();
+
+        final secondStorage = SqliteStorageAdapter.open(databaseFile.path);
+        addTearDown(secondStorage.close);
+        final secondEngine = ElmixEngine(storage: secondStorage);
+
+        final loaded = await secondEngine.getCollectionSchema('posts');
+
+        expect(loaded?.name, 'posts');
+        expect(loaded?.fields.map((field) => field.name), <String>[
+          'id',
+          'title',
+          'author',
+        ]);
+        expect(
+          loaded?.fields.firstWhere((field) => field.name == 'author').type,
+          FieldType.relation,
+        );
+        expect(
+          loaded?.fields
+              .firstWhere((field) => field.name == 'author')
+              .targetCollection,
+          'users',
+        );
+        expect(
+          loaded?.accessRules[CollectionOperation.list]?.expression,
+          'true',
+        );
+      },
+    );
+
+    test('lists persisted collection schemas by name', () async {
+      final storage = SqliteStorageAdapter();
+      addTearDown(storage.close);
+
+      await storage.putCollectionSchema(
+        _schemaWithName(
+          'posts',
+          const <SchemaField>[
+            SchemaField(name: 'title', type: FieldType.text),
+          ],
+        ),
+      );
+      await storage.putCollectionSchema(
+        _schemaWithName(
+          'members',
+          const <SchemaField>[
+            SchemaField(name: 'email', type: FieldType.email),
+          ],
+        ),
+      );
+
+      final schemas = await storage.listCollectionSchemas();
+
+      expect(schemas.map((schema) => schema.name), <String>[
+        'members',
+        'posts',
+      ]);
+      expect(
+        schemas
+            .firstWhere((schema) => schema.name == 'members')
+            .fields
+            .map((field) => field.name),
+        <String>['id', 'email'],
+      );
+      expect(
+        schemas
+            .firstWhere((schema) => schema.name == 'posts')
+            .fields
+            .map((field) => field.name),
+        <String>['id', 'title'],
+      );
+    });
+
+    test(
+      'stores and retrieves schema-backed records across reopened databases',
+      () async {
+        final databaseFile = _temporaryDatabaseFile();
+        final firstStorage = SqliteStorageAdapter.open(databaseFile.path);
+        final firstEngine = ElmixEngine(storage: firstStorage);
+        final publishedAt = DateTime.utc(2026, 5, 9, 12, 30);
+        const postsSchema = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'views', type: FieldType.number),
+            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'publishedAt', type: FieldType.date),
+            SchemaField(name: 'authorEmail', type: FieldType.email),
+            SchemaField(name: 'status', type: FieldType.select),
+            SchemaField(
+              name: 'author',
+              type: FieldType.relation,
+              targetCollection: 'users',
+            ),
+            SchemaField(name: 'metadata', type: FieldType.json),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        );
+
+        await firstEngine.registerCollection(postsSchema);
+        await firstEngine
+            .collection('posts')
+            .create(
+              Record(
+                collection: 'posts',
+                id: const RecordIdentifier('post_1'),
+                data: <String, Object?>{
+                  'title': 'SQLite arrives',
+                  'views': 42,
+                  'published': true,
+                  'publishedAt': publishedAt,
+                  'authorEmail': 'author@example.com',
+                  'status': 'published',
+                  'author': 'user_1',
+                  'metadata': <String, Object?>{
+                    'tags': <Object?>['sqlite', 'storage'],
+                  },
+                },
+              ),
+            );
+        firstStorage.close();
+
+        final secondStorage = SqliteStorageAdapter.open(databaseFile.path);
+        addTearDown(secondStorage.close);
+        final secondEngine = ElmixEngine(storage: secondStorage);
+
+        final record = await secondEngine
+            .collection('posts')
+            .get(const RecordIdentifier('post_1'));
+
+        expect(record?.data, <String, Object?>{
+          'title': 'SQLite arrives',
+          'views': 42,
+          'published': true,
+          'publishedAt': publishedAt,
+          'authorEmail': 'author@example.com',
+          'status': 'published',
+          'author': 'user_1',
+          'metadata': <String, Object?>{
+            'tags': <Object?>['sqlite', 'storage'],
+          },
+        });
+      },
+    );
+
+    test(
+      'applies added schema fields before updating and listing records',
+      () async {
+        final storage = SqliteStorageAdapter();
+        addTearDown(storage.close);
+        final engine = ElmixEngine(storage: storage);
+        const initialSchema = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        );
+        const expandedSchema = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'published', type: FieldType.bool),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        );
+
+        await engine.registerCollection(initialSchema);
+        await engine
+            .collection('posts')
+            .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{'title': 'Draft'},
+              ),
+            );
+        await engine.updateCollectionSchema(expandedSchema);
+        await engine
+            .collection('posts')
+            .update(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{
+                  'title': 'Published',
+                  'published': true,
+                },
+              ),
+            );
+
+        final page = await engine
+            .collection('posts')
+            .list(
+              query: const QueryExpression(
+                filters: <QueryFilter>[
+                  QueryFilter(
+                    field: 'published',
+                    operator: QueryOperator.equals,
+                    value: true,
+                  ),
+                ],
+              ),
+            );
+
+        expect(page.items.single.data['title'], 'Published');
+
+        await engine
+            .collection('posts')
+            .delete(
+              const RecordIdentifier('post_1'),
+            );
+
+        expect(
+          await engine
+              .collection('posts')
+              .get(const RecordIdentifier('post_1')),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'clears removed field values before the same field name is reused',
+      () async {
+        final storage = SqliteStorageAdapter();
+        addTearDown(storage.close);
+        final engine = ElmixEngine(storage: storage);
+        const schemaWithStatus = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'status', type: FieldType.text),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        );
+        const schemaWithoutStatus = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        );
+
+        await engine.registerCollection(schemaWithStatus);
+        await engine
+            .collection('posts')
+            .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{
+                  'title': 'First',
+                  'status': 'legacy',
+                },
+              ),
+            );
+        await engine.updateCollectionSchema(schemaWithoutStatus);
+        await engine
+            .collection('posts')
+            .update(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{'title': 'Updated while removed'},
+              ),
+            );
+        await engine.updateCollectionSchema(schemaWithStatus);
+
+        final record = await engine
+            .collection('posts')
+            .get(const RecordIdentifier('post_1'));
+
+        expect(record?.data, <String, Object?>{
+          'title': 'Updated while removed',
+          'status': null,
+        });
+      },
+    );
+
     test('applies query filters and sorting when listing records', () async {
       final storage = SqliteStorageAdapter();
+      await storage.putCollectionSchema(
+        _postsSchemaWithFields(<SchemaField>[
+          const SchemaField(name: 'published', type: FieldType.bool),
+          const SchemaField(name: 'score', type: FieldType.number),
+        ]),
+      );
 
       await storage.putRecord(
         const Record(
@@ -56,6 +373,11 @@ void main() {
       'filters by built-in id without requiring duplicated record data',
       () async {
         final storage = SqliteStorageAdapter();
+        await storage.putCollectionSchema(
+          _postsSchemaWithFields(<SchemaField>[
+            const SchemaField(name: 'title', type: FieldType.text),
+          ]),
+        );
 
         await storage.putRecord(
           const Record(
@@ -97,6 +419,12 @@ void main() {
 
     test('excludes missing values from range filters', () async {
       final storage = SqliteStorageAdapter();
+      await storage.putCollectionSchema(
+        _postsSchemaWithFields(<SchemaField>[
+          const SchemaField(name: 'title', type: FieldType.text),
+          const SchemaField(name: 'score', type: FieldType.number),
+        ]),
+      );
 
       await storage.putRecord(
         const Record(
@@ -146,4 +474,25 @@ void main() {
       expect(page.totalItems, 1);
     });
   });
+}
+
+File _temporaryDatabaseFile() {
+  final directory = Directory.systemTemp.createTempSync('elmix_sqlite_test_');
+  addTearDown(() => directory.deleteSync(recursive: true));
+  return File('${directory.path}/elmix.db');
+}
+
+CollectionSchema _postsSchemaWithFields(List<SchemaField> fields) {
+  return _schemaWithName('posts', fields);
+}
+
+CollectionSchema _schemaWithName(String name, List<SchemaField> fields) {
+  return CollectionSchema(
+    name: name,
+    fields: <SchemaField>[
+      const SchemaField.recordIdentifier(),
+      ...fields,
+    ],
+    accessRules: const <CollectionOperation, AccessRule>{},
+  );
 }
