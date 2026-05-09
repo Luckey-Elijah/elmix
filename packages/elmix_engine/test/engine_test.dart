@@ -55,10 +55,11 @@ void main() {
       () async {
         final storage = InMemoryStorageAdapter();
         final engine = ElmixEngine(storage: storage);
-        final schemaWithDefaults = CollectionSchema.withDefaultSystemFields(
+        final schemaWithDefaults = CollectionSchema(
           name: 'posts',
-          fields: const [
-            SchemaField(name: 'title', type: FieldType.text),
+          fields: [
+            ...CollectionSchema.defaultFields(),
+            const SchemaField(name: 'title', type: FieldType.text),
           ],
           accessRules: const {},
         );
@@ -69,7 +70,7 @@ void main() {
           (await engine.getCollectionSchema(
             'posts',
           ))?.fields.map((field) => field.name),
-          ['created', 'updated', 'title'],
+          ['id', 'created', 'updated', 'title'],
         );
 
         const schemaWithoutDefaults = CollectionSchema(
@@ -86,7 +87,7 @@ void main() {
             .create(
               const Record(
                 collection: 'notes',
-                id: 'note-1',
+                id: RecordIdentifier('note-1'),
                 data: {'body': 'No timestamps required.'},
               ),
             );
@@ -97,9 +98,15 @@ void main() {
           ))?.fields.map((field) => field.name),
           ['body'],
         );
-        expect((await engine.collection('notes').get('note-1'))?.data, {
-          'body': 'No timestamps required.',
-        });
+        expect(
+          (await engine
+                  .collection('notes')
+                  .get(
+                    const RecordIdentifier('note-1'),
+                  ))
+              ?.data,
+          {'body': 'No timestamps required.'},
+        );
       },
     );
   });
@@ -122,33 +129,33 @@ void main() {
       await posts.create(
         const Record(
           collection: 'posts',
-          id: 'post-1',
+          id: RecordIdentifier('post-1'),
           data: {'title': 'First post'},
         ),
       );
 
-      expect((await posts.list()).map((record) => record.id), [
+      expect((await posts.list()).items.map((record) => record.id.value), [
         'post-1',
       ]);
-      expect(await posts.get('post-1'), isA<Record>());
+      expect(await posts.get(const RecordIdentifier('post-1')), isA<Record>());
 
       await posts.update(
         const Record(
           collection: 'posts',
-          id: 'post-1',
+          id: RecordIdentifier('post-1'),
           data: {'title': 'Edited post'},
         ),
       );
 
       expect(
-        (await posts.get('post-1'))?.data,
+        (await posts.get(const RecordIdentifier('post-1')))?.data,
         {'title': 'Edited post'},
       );
 
-      await posts.delete('post-1');
+      await posts.delete(const RecordIdentifier('post-1'));
 
-      expect(await posts.get('post-1'), isNull);
-      expect(await posts.list(), isEmpty);
+      expect(await posts.get(const RecordIdentifier('post-1')), isNull);
+      expect((await posts.list()).items, isEmpty);
     });
 
     test(
@@ -184,7 +191,7 @@ void main() {
             .create(
               Record(
                 collection: 'profiles',
-                id: 'profile-1',
+                id: const RecordIdentifier('profile-1'),
                 data: {
                   'name': 'Ada',
                   'age': 37,
@@ -208,7 +215,7 @@ void main() {
               .create(
                 const Record(
                   collection: 'profiles',
-                  id: 'profile-2',
+                  id: RecordIdentifier('profile-2'),
                   data: {'name': 123},
                 ),
               ),
@@ -237,7 +244,7 @@ void main() {
             .create(
               const Record(
                 collection: 'posts',
-                id: '',
+                id: RecordIdentifier(''),
                 data: {'title': 'Untitled'},
               ),
             ),
@@ -262,13 +269,27 @@ class InMemoryStorageAdapter implements StorageAdapter {
   }
 
   @override
-  Future<List<Record>> listRecords(String collection) async {
-    return List.unmodifiable(_records[collection]?.values ?? const []);
+  Future<RecordPage> listRecords({
+    required String collection,
+    QueryExpression query = const QueryExpression(),
+  }) async {
+    final items = List<Record>.unmodifiable(
+      _records[collection]?.values ?? const <Record>[],
+    );
+    return RecordPage(
+      items: items,
+      page: query.pagination.page,
+      perPage: query.pagination.perPage,
+      totalItems: items.length,
+    );
   }
 
   @override
-  Future<Record?> getRecord(String collection, String id) async {
-    return _records[collection]?[id];
+  Future<Record?> getRecord({
+    required String collection,
+    required RecordIdentifier id,
+  }) async {
+    return _records[collection]?[id.value];
   }
 
   @override
@@ -278,11 +299,14 @@ class InMemoryStorageAdapter implements StorageAdapter {
 
   @override
   Future<void> putRecord(Record record) async {
-    _records.putIfAbsent(record.collection, () => {})[record.id] = record;
+    _records.putIfAbsent(record.collection, () => {})[record.id.value] = record;
   }
 
   @override
-  Future<void> deleteRecord(String collection, String id) async {
-    _records[collection]?.remove(id);
+  Future<void> deleteRecord({
+    required String collection,
+    required RecordIdentifier id,
+  }) async {
+    _records[collection]?.remove(id.value);
   }
 }

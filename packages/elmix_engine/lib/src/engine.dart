@@ -1,5 +1,6 @@
 import 'package:elmix_engine/src/action_hook.dart';
 import 'package:elmix_engine/src/collection_schema.dart';
+import 'package:elmix_engine/src/query_expression.dart';
 import 'package:elmix_engine/src/record.dart';
 import 'package:elmix_engine/src/storage_adapter.dart';
 
@@ -87,8 +88,8 @@ class CollectionHandle {
   }
 
   /// Gets a record by exact [id].
-  Future<Record?> get(String id) {
-    return _storage.getRecord(name, id);
+  Future<Record?> get(RecordIdentifier id) {
+    return _storage.getRecord(collection: name, id: id);
   }
 
   /// Updates [record] in this collection.
@@ -98,13 +99,15 @@ class CollectionHandle {
   }
 
   /// Lists records in this collection.
-  Future<List<Record>> list() {
-    return _storage.listRecords(name);
+  Future<RecordPage> list({
+    QueryExpression query = const QueryExpression(),
+  }) {
+    return _storage.listRecords(collection: name, query: query);
   }
 
   /// Deletes a record by exact [id].
-  Future<void> delete(String id) {
-    return _storage.deleteRecord(name, id);
+  Future<void> delete(RecordIdentifier id) {
+    return _storage.deleteRecord(collection: name, id: id);
   }
 
   Future<void> _validateRecord(Record record) async {
@@ -115,7 +118,7 @@ class CollectionHandle {
       );
     }
 
-    if (record.id.trim().isEmpty) {
+    if (record.id.value.trim().isEmpty) {
       throw const RecordValidationException('Record id is required.');
     }
 
@@ -127,6 +130,10 @@ class CollectionHandle {
     }
 
     for (final field in schema.fields) {
+      if (field.systemRole == FieldSystemRole.recordIdentifier) {
+        continue;
+      }
+
       final value = record.data[field.name];
       if (value == null) {
         if (field.required) {

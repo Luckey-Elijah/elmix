@@ -1,4 +1,5 @@
 import 'package:elmix_engine/src/collection_schema.dart';
+import 'package:elmix_engine/src/query_expression.dart';
 import 'package:elmix_engine/src/record.dart';
 
 /// Persistence contract implemented by storage adapter packages.
@@ -6,7 +7,7 @@ abstract class StorageAdapter {
   /// Stores [schema], replacing any existing stored schema with the same name.
   Future<void> putCollectionSchema(CollectionSchema schema);
 
-  /// Finds a persisted collection schema by [name].
+  /// Loads a collection schema by [name].
   Future<CollectionSchema?> getCollectionSchema(String name);
 
   /// Lists all persisted collection schemas.
@@ -15,12 +16,21 @@ abstract class StorageAdapter {
   /// Stores [record], replacing any existing stored record with the same id.
   Future<void> putRecord(Record record);
 
-  /// Finds a record by [collection] and [id].
-  Future<Record?> getRecord(String collection, String id);
+  /// Loads one record by collection and [id].
+  Future<Record?> getRecord({
+    required String collection,
+    required RecordIdentifier id,
+  });
 
   /// Lists records stored in [collection].
-  Future<List<Record>> listRecords(String collection);
+  Future<RecordPage> listRecords({
+    required String collection,
+    QueryExpression query = const QueryExpression(),
+  });
 
-  /// Deletes a record by [collection] and [id].
-  Future<void> deleteRecord(String collection, String id);
+  /// Deletes one record by collection and [id].
+  Future<void> deleteRecord({
+    required String collection,
+    required RecordIdentifier id,
+  });
 }
