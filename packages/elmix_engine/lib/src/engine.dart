@@ -108,6 +108,13 @@ class CollectionHandle {
   /// Updates [record] in this collection.
   Future<Record> update(Record record) async {
     await _validateRecord(record);
+    final existing = await _storage.getRecord(collection: name, id: record.id);
+    if (existing == null) {
+      throw RecordValidationException(
+        'Record "${record.id.value}" does not exist in collection "$name".',
+      );
+    }
+
     return _storage.putRecord(record);
   }
 

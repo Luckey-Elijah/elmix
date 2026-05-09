@@ -353,6 +353,34 @@ void main() {
         throwsA(isA<RecordValidationException>()),
       );
     });
+
+    test('does not update a record that does not exist', () async {
+      final storage = InMemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: [
+            SchemaField(name: 'title', type: FieldType.text),
+          ],
+          accessRules: {},
+        ),
+      );
+
+      await expectLater(
+        engine
+            .collection('posts')
+            .update(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('missing-post'),
+                data: {'title': 'Missing post'},
+              ),
+            ),
+        throwsA(isA<RecordValidationException>()),
+      );
+    });
   });
 }
 
