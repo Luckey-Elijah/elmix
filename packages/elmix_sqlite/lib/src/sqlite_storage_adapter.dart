@@ -24,8 +24,9 @@ class SqliteStorageAdapter implements StorageAdapter {
 
   @override
   Future<void> putCollectionSchema(CollectionSchema schema) async {
+    final previousSchema = await getCollectionSchema(schema.name);
     _runInTransaction(() {
-      _applySchema(schema);
+      _applySchema(schema, previousSchema: previousSchema);
       final statement = _database.prepare(
         '''
         INSERT INTO _elmix_collection_schemas (name, schema_json)
@@ -209,7 +210,10 @@ class SqliteStorageAdapter implements StorageAdapter {
     );
   }
 
-  void _applySchema(CollectionSchema schema) {
+  void _applySchema(
+    CollectionSchema schema, {
+    CollectionSchema? previousSchema,
+  }) {
     final table = _collectionTableName(schema.name);
     _database.execute(
       '''
@@ -220,6 +224,15 @@ class SqliteStorageAdapter implements StorageAdapter {
     );
 
     final existingColumns = _columnNames(table);
+    if (previousSchema != null) {
+      _clearRemovedFieldColumns(
+        table: table,
+        previousSchema: previousSchema,
+        schema: schema,
+        existingColumns: existingColumns,
+      );
+    }
+
     for (final field in schema.fields) {
       if (field.systemRole == FieldSystemRole.recordIdentifier) {
         continue;
@@ -232,6 +245,31 @@ class SqliteStorageAdapter implements StorageAdapter {
         '''
         ALTER TABLE ${_quoteIdentifier(table)}
         ADD COLUMN ${_quoteIdentifier(field.name)} ${_sqliteType(field)}
+        ''',
+      );
+    }
+  }
+
+  void _clearRemovedFieldColumns({
+    required String table,
+    required CollectionSchema previousSchema,
+    required CollectionSchema schema,
+    required Set<String> existingColumns,
+  }) {
+    final currentFieldNames = schema.fields
+        .where((field) => field.systemRole != FieldSystemRole.recordIdentifier)
+        .map((field) => field.name)
+        .toSet();
+    final removedFields = previousSchema.fields
+        .where((field) => field.systemRole != FieldSystemRole.recordIdentifier)
+        .where((field) => !currentFieldNames.contains(field.name))
+        .where((field) => existingColumns.contains(field.name));
+
+    for (final field in removedFields) {
+      _database.execute(
+        '''
+        UPDATE ${_quoteIdentifier(table)}
+        SET ${_quoteIdentifier(field.name)} = NULL
         ''',
       );
     }

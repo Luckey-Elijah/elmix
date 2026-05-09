@@ -255,6 +255,66 @@ void main() {
       },
     );
 
+    test(
+      'clears removed field values before the same field name is reused',
+      () async {
+        final storage = SqliteStorageAdapter();
+        addTearDown(storage.close);
+        final engine = ElmixEngine(storage: storage);
+        const schemaWithStatus = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'status', type: FieldType.text),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        );
+        const schemaWithoutStatus = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        );
+
+        await engine.registerCollection(schemaWithStatus);
+        await engine
+            .collection('posts')
+            .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{
+                  'title': 'First',
+                  'status': 'legacy',
+                },
+              ),
+            );
+        await engine.updateCollectionSchema(schemaWithoutStatus);
+        await engine
+            .collection('posts')
+            .update(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{'title': 'Updated while removed'},
+              ),
+            );
+        await engine.updateCollectionSchema(schemaWithStatus);
+
+        final record = await engine
+            .collection('posts')
+            .get(const RecordIdentifier('post_1'));
+
+        expect(record?.data, <String, Object?>{
+          'title': 'Updated while removed',
+          'status': null,
+        });
+      },
+    );
+
     test('applies query filters and sorting when listing records', () async {
       final storage = SqliteStorageAdapter();
       await storage.putCollectionSchema(
