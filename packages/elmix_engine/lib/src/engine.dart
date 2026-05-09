@@ -1,4 +1,6 @@
+import 'package:elmix_engine/src/access_rule.dart';
 import 'package:elmix_engine/src/action_hook.dart';
+import 'package:elmix_engine/src/auth.dart';
 import 'package:elmix_engine/src/collection_schema.dart';
 import 'package:elmix_engine/src/query_expression.dart';
 import 'package:elmix_engine/src/record.dart';
@@ -14,6 +16,7 @@ class ElmixEngine {
 
   final StorageAdapter _storage;
   final List<ActionHook> _hooks = [];
+  final List<AuthenticationActionHook> _authenticationHooks = [];
 
   /// Registers a new collection schema.
   Future<void> registerCollection(CollectionSchema schema) async {
@@ -50,8 +53,16 @@ class ElmixEngine {
   }
 
   /// Opens the record API for the collection named [name].
-  CollectionHandle collection(String name) {
-    return CollectionHandle(name: name, storage: _storage);
+  CollectionHandle collection(
+    String name, {
+    RequestContext context = RequestContext.anonymous,
+  }) {
+    return CollectionHandle(
+      name: name,
+      storage: _storage,
+      context: context,
+      hooks: _hooks,
+    );
   }
 
   /// Adds a lifecycle [hook] to the engine.
@@ -61,6 +72,49 @@ class ElmixEngine {
 
   /// The registered lifecycle hooks.
   List<ActionHook> get hooks => List.unmodifiable(_hooks);
+
+  /// Adds a lifecycle [hook] for authentication actions.
+  void addAuthenticationHook(AuthenticationActionHook hook) {
+    _authenticationHooks.add(hook);
+  }
+
+  /// Runs an authentication [action] with before and after lifecycle hooks.
+  Future<AuthRecordIdentity> runAuthenticationAction({
+    required String collection,
+    required AuthenticationOperation action,
+    required Future<AuthRecordIdentity> Function() run,
+  }) async {
+    await _runAuthenticationHooks(
+      collection: collection,
+      action: action,
+      phase: HookPhase.before,
+    );
+    final authRecord = await run();
+    await _runAuthenticationHooks(
+      collection: collection,
+      action: action,
+      phase: HookPhase.after,
+      authRecord: authRecord,
+    );
+    return authRecord;
+  }
+
+  Future<void> _runAuthenticationHooks({
+    required String collection,
+    required AuthenticationOperation action,
+    required HookPhase phase,
+    AuthRecordIdentity? authRecord,
+  }) async {
+    final context = AuthenticationActionHookContext(
+      collection: collection,
+      action: action,
+      phase: phase,
+      authRecord: authRecord,
+    );
+    for (final hook in _authenticationHooks) {
+      await hook(context);
+    }
+  }
 }
 
 /// Record use cases scoped to one collection.
@@ -69,16 +123,33 @@ class CollectionHandle {
   CollectionHandle({
     required this.name,
     required StorageAdapter storage,
-  }) : _storage = storage;
+    RequestContext context = RequestContext.anonymous,
+    List<ActionHook> hooks = const <ActionHook>[],
+  }) : _storage = storage,
+       _context = context,
+       _hooks = hooks;
 
   /// The collection name this handle operates on.
   final String name;
 
   final StorageAdapter _storage;
+  final RequestContext _context;
+  final List<ActionHook> _hooks;
 
   /// Creates [record] in this collection.
   Future<Record> create(Record record) async {
-    await _validateRecord(record, requireIdentifier: false);
+    final schema = await _requireSchema();
+    _authorize(
+      schema: schema,
+      operation: CollectionOperation.create,
+      requestRecord: record,
+    );
+    await _runHooks(
+      operation: CollectionOperation.create,
+      phase: HookPhase.before,
+      record: record,
+    );
+    await _validateRecord(record, schema: schema, requireIdentifier: false);
     if (record.id.value.trim().isNotEmpty) {
       final existing = await _storage.getRecord(
         collection: name,
@@ -91,23 +162,71 @@ class CollectionHandle {
       }
     }
 
-    return _storage.putRecord(record);
+    final created = await _storage.putRecord(record);
+    await _runHooks(
+      operation: CollectionOperation.create,
+      phase: HookPhase.after,
+      record: created,
+    );
+    return created;
   }
 
   /// Saves [record] to this collection.
   Future<Record> save(Record record) async {
-    await _validateRecord(record, requireIdentifier: false);
-    return _storage.putRecord(record);
+    final schema = await _requireSchema();
+    await _validateRecord(record, schema: schema, requireIdentifier: false);
+    final existing = record.id.value.trim().isEmpty
+        ? null
+        : await _storage.getRecord(collection: name, id: record.id);
+    final operation = existing == null
+        ? CollectionOperation.create
+        : CollectionOperation.update;
+    _authorize(
+      schema: schema,
+      operation: operation,
+      record: existing,
+      requestRecord: record,
+    );
+    await _runHooks(
+      operation: operation,
+      phase: HookPhase.before,
+      record: record,
+    );
+    final saved = await _storage.putRecord(record);
+    await _runHooks(
+      operation: operation,
+      phase: HookPhase.after,
+      record: saved,
+    );
+    return saved;
   }
 
   /// Gets a record by exact [id].
-  Future<Record?> get(RecordIdentifier id) {
-    return _storage.getRecord(collection: name, id: id);
+  Future<Record?> get(RecordIdentifier id) async {
+    final schema = await _requireSchema();
+    final record = await _storage.getRecord(collection: name, id: id);
+    _authorize(
+      schema: schema,
+      operation: CollectionOperation.view,
+      record: record,
+    );
+    await _runHooks(
+      operation: CollectionOperation.view,
+      phase: HookPhase.before,
+      record: record,
+    );
+    await _runHooks(
+      operation: CollectionOperation.view,
+      phase: HookPhase.after,
+      record: record,
+    );
+    return record;
   }
 
   /// Updates [record] in this collection.
   Future<Record> update(Record record) async {
-    await _validateRecord(record);
+    final schema = await _requireSchema();
+    await _validateRecord(record, schema: schema);
     final existing = await _storage.getRecord(collection: name, id: record.id);
     if (existing == null) {
       throw RecordValidationException(
@@ -115,23 +234,152 @@ class CollectionHandle {
       );
     }
 
-    return _storage.putRecord(record);
+    _authorize(
+      schema: schema,
+      operation: CollectionOperation.update,
+      record: existing,
+      requestRecord: record,
+    );
+    await _runHooks(
+      operation: CollectionOperation.update,
+      phase: HookPhase.before,
+      record: record,
+    );
+    final updated = await _storage.putRecord(record);
+    await _runHooks(
+      operation: CollectionOperation.update,
+      phase: HookPhase.after,
+      record: updated,
+    );
+    return updated;
   }
 
   /// Lists records in this collection.
   Future<RecordPage> list({
     QueryExpression query = const QueryExpression(),
-  }) {
-    return _storage.listRecords(collection: name, query: query);
+  }) async {
+    final schema = await _requireSchema();
+    _authorize(schema: schema, operation: CollectionOperation.list);
+    _validateQuery(query, schema: schema);
+    await _runHooks(
+      operation: CollectionOperation.list,
+      phase: HookPhase.before,
+    );
+    final page = await _storage.listRecords(collection: name, query: query);
+    await _runHooks(
+      operation: CollectionOperation.list,
+      phase: HookPhase.after,
+    );
+    return page;
   }
 
   /// Deletes a record by exact [id].
-  Future<void> delete(RecordIdentifier id) {
-    return _storage.deleteRecord(collection: name, id: id);
+  Future<void> delete(RecordIdentifier id) async {
+    final schema = await _requireSchema();
+    final record = await _storage.getRecord(collection: name, id: id);
+    _authorize(
+      schema: schema,
+      operation: CollectionOperation.delete,
+      record: record,
+    );
+    await _runHooks(
+      operation: CollectionOperation.delete,
+      phase: HookPhase.before,
+      record: record,
+    );
+    await _storage.deleteRecord(collection: name, id: id);
+    await _runHooks(
+      operation: CollectionOperation.delete,
+      phase: HookPhase.after,
+      record: record,
+    );
+  }
+
+  Future<void> _runHooks({
+    required CollectionOperation operation,
+    required HookPhase phase,
+    Record? record,
+  }) async {
+    final context = ActionHookContext(
+      collection: name,
+      operation: operation,
+      phase: phase,
+      record: record,
+      authRecord: _context.authRecord,
+    );
+    for (final hook in _hooks) {
+      await hook(context);
+    }
+  }
+
+  void _validateQuery(
+    QueryExpression query, {
+    required CollectionSchema schema,
+  }) {
+    if (query.pagination.page < 1) {
+      throw const QueryExpressionException('Query page must be at least 1.');
+    }
+    if (query.pagination.perPage < 1) {
+      throw const QueryExpressionException('Query perPage must be at least 1.');
+    }
+
+    final fieldNames = {
+      'id',
+      ...schema.fields.map((field) => field.name),
+    };
+    final queriedFields = [
+      ...query.filters.map((filter) => filter.field),
+      ...query.sort.map((sort) => sort.field),
+    ];
+    for (final field in queriedFields) {
+      if (field.contains('.')) {
+        throw QueryExpressionException(
+          'Query field "$field" is outside the Engine query contract.',
+        );
+      }
+      if (!fieldNames.contains(field)) {
+        throw QueryExpressionException(
+          'Query field "$field" is not declared by collection "$name".',
+        );
+      }
+    }
+  }
+
+  Future<CollectionSchema> _requireSchema() async {
+    final schema = await _storage.getCollectionSchema(name);
+    if (schema == null) {
+      throw RecordValidationException(
+        'Collection "$name" is not registered.',
+      );
+    }
+    return schema;
+  }
+
+  void _authorize({
+    required CollectionSchema schema,
+    required CollectionOperation operation,
+    Record? record,
+    Record? requestRecord,
+  }) {
+    final rule = schema.accessRules[operation];
+    if (rule == null || rule.expression.trim().isEmpty) {
+      return;
+    }
+
+    if (!_AccessRuleEvaluator(
+      context: _context,
+      record: record,
+      requestRecord: requestRecord,
+    ).allows(rule)) {
+      throw AuthorizationException(
+        'Collection "$name" ${operation.name} request is not authorized.',
+      );
+    }
   }
 
   Future<void> _validateRecord(
     Record record, {
+    required CollectionSchema schema,
     bool requireIdentifier = true,
   }) async {
     if (record.collection != name) {
@@ -143,13 +391,6 @@ class CollectionHandle {
 
     if (requireIdentifier && record.id.value.trim().isEmpty) {
       throw const RecordValidationException('Record id is required.');
-    }
-
-    final schema = await _storage.getCollectionSchema(name);
-    if (schema == null) {
-      throw RecordValidationException(
-        'Collection "$name" is not registered.',
-      );
     }
 
     final dataFields = schema.fields
@@ -204,6 +445,106 @@ class CollectionHandle {
       final List<Object?> list => list.every(_isJsonValue),
       final Map<String, Object?> map => map.values.every(_isJsonValue),
       _ => false,
+    };
+  }
+}
+
+class _AccessRuleEvaluator {
+  _AccessRuleEvaluator({
+    required RequestContext context,
+    Record? record,
+    Record? requestRecord,
+  }) : _context = context,
+       _record = record,
+       _requestRecord = requestRecord;
+
+  final RequestContext _context;
+  final Record? _record;
+  final Record? _requestRecord;
+
+  bool allows(AccessRule rule) {
+    final expression = rule.expression.trim();
+    if (expression == 'true') {
+      return true;
+    }
+    if (expression == 'false') {
+      return false;
+    }
+
+    return expression
+        .split('&&')
+        .map((part) => part.trim())
+        .every(_evaluateComparison);
+  }
+
+  bool _evaluateComparison(String comparison) {
+    final operator = ['>=', '<=', '!=', '==', '>', '<']
+        .where(
+          comparison.contains,
+        )
+        .firstOrNull;
+    if (operator == null) {
+      return false;
+    }
+
+    final parts = comparison.split(operator);
+    if (parts.length != 2) {
+      return false;
+    }
+
+    final left = _resolve(parts[0].trim());
+    final right = _resolve(parts[1].trim());
+    final compared = _compare(left, right);
+    return switch (operator) {
+      '==' => left == right,
+      '!=' => left != right,
+      '>' => compared != null && compared > 0,
+      '>=' => compared != null && compared >= 0,
+      '<' => compared != null && compared < 0,
+      '<=' => compared != null && compared <= 0,
+      _ => false,
+    };
+  }
+
+  Object? _resolve(String token) {
+    if (token.length >= 2 && token.startsWith('"') && token.endsWith('"')) {
+      return token.substring(1, token.length - 1);
+    }
+    if (token == 'true') {
+      return true;
+    }
+    if (token == 'false') {
+      return false;
+    }
+    final number = num.tryParse(token);
+    if (number != null) {
+      return number;
+    }
+
+    return switch (token) {
+      'auth.id' => _context.authRecord?.id.value,
+      'auth.collection' => _context.authRecord?.collection,
+      'record.id' => _record?.id.value,
+      final field when field.startsWith('record.data.') =>
+        _record?.data[field.substring('record.data.'.length)],
+      final field when field.startsWith('request.data.') =>
+        _requestRecord?.data[field.substring('request.data.'.length)],
+      _ => null,
+    };
+  }
+
+  int? _compare(Object? left, Object? right) {
+    return switch ((left, right)) {
+      (final num left, final num right) => left.compareTo(right),
+      (final String left, final String right) => left.compareTo(right),
+      (final bool left, final bool right) =>
+        left == right
+            ? 0
+            : left
+            ? 1
+            : -1,
+      (final DateTime left, final DateTime right) => left.compareTo(right),
+      _ => null,
     };
   }
 }

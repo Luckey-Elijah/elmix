@@ -27,3 +27,15 @@ class AccessRule {
   /// The persisted authorization expression.
   final String expression;
 }
+
+/// Thrown when an Engine request is not allowed by an [AccessRule].
+class AuthorizationException implements Exception {
+  /// Creates an authorization failure with a human-readable [message].
+  const AuthorizationException(this.message);
+
+  /// Describes why authorization failed.
+  final String message;
+
+  @override
+  String toString() => 'AuthorizationException: $message';
+}

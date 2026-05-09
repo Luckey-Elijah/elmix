@@ -1,5 +1,34 @@
 import 'package:elmix_engine/src/record.dart';
 
+/// Auth Record identity attached to one Engine request.
+class AuthRecordIdentity {
+  /// Creates an authenticated application record identity.
+  const AuthRecordIdentity({
+    required this.collection,
+    required this.id,
+  });
+
+  /// The Auth Collection that owns this identity.
+  final String collection;
+
+  /// The authenticated record identifier.
+  final RecordIdentifier id;
+}
+
+/// Request-scoped Engine execution context.
+class RequestContext {
+  /// Creates request context for Engine use cases.
+  const RequestContext({
+    this.authRecord,
+  });
+
+  /// Anonymous request context.
+  static const anonymous = RequestContext();
+
+  /// The authenticated application record, when present.
+  final AuthRecordIdentity? authRecord;
+}
+
 /// A record from an auth-enabled collection that can authenticate to APIs.
 class AuthRecord extends Record {
   /// Creates an authentication-capable application record.
