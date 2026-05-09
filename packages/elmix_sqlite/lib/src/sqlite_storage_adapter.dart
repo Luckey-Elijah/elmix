@@ -69,11 +69,11 @@ class SqliteStorageAdapter implements StorageAdapter {
       ''',
     );
     return rows
-        .map(
-          (row) => _schemaFromJson(
-            jsonDecode(row['schema_json'] as String) as Map<String, Object?>,
-          ),
-        )
+        .map((row) => row['schema_json'])
+        .cast<String>()
+        .map(jsonDecode)
+        .cast<Map<String, Object?>>()
+        .map(_schemaFromJson)
         .toList();
   }
 
