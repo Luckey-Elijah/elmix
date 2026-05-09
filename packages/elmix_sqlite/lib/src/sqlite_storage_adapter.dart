@@ -9,10 +9,15 @@ class SqliteStorageAdapter implements StorageAdapter {
   final Map<String, List<Record>> _records = {};
 
   @override
-  Future<void> saveCollectionSchema(CollectionSchema schema) async {
+  Future<void> putCollectionSchema(CollectionSchema schema) async {
     _schemas
       ..removeWhere((existing) => existing.name == schema.name)
       ..add(schema);
+  }
+
+  @override
+  Future<CollectionSchema?> getCollectionSchema(String name) async {
+    return _schemas.where((schema) => schema.name == name).firstOrNull;
   }
 
   @override
@@ -21,14 +26,24 @@ class SqliteStorageAdapter implements StorageAdapter {
   }
 
   @override
-  Future<void> saveRecord(Record record) async {
+  Future<void> putRecord(Record record) async {
     _records.putIfAbsent(record.collection, () => [])
       ..removeWhere((existing) => existing.id == record.id)
       ..add(record);
   }
 
   @override
+  Future<Record?> getRecord(String collection, String id) async {
+    return _records[collection]?.where((record) => record.id == id).firstOrNull;
+  }
+
+  @override
   Future<List<Record>> listRecords(String collection) async {
     return List.unmodifiable(_records[collection] ?? const []);
+  }
+
+  @override
+  Future<void> deleteRecord(String collection, String id) async {
+    _records[collection]?.removeWhere((record) => record.id == id);
   }
 }

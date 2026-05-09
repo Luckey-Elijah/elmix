@@ -63,6 +63,25 @@ class CollectionSchema {
     this.isAuthCollection = false,
   });
 
+  /// Creates a schema with conventional removable system field metadata.
+  factory CollectionSchema.withDefaultSystemFields({
+    required String name,
+    required List<SchemaField> fields,
+    required Map<CollectionOperation, AccessRule> accessRules,
+    bool isAuthCollection = false,
+  }) {
+    return CollectionSchema(
+      name: name,
+      fields: [
+        const SchemaField(name: 'created', type: FieldType.date),
+        const SchemaField(name: 'updated', type: FieldType.date),
+        ...fields,
+      ],
+      accessRules: accessRules,
+      isAuthCollection: isAuthCollection,
+    );
+  }
+
   /// The collection name.
   final String name;
 
@@ -74,4 +93,16 @@ class CollectionSchema {
 
   /// Whether this collection stores authentication records.
   final bool isAuthCollection;
+}
+
+/// Thrown when a collection schema cannot be registered or updated.
+class CollectionSchemaException implements Exception {
+  /// Creates a schema failure with a human-readable [message].
+  const CollectionSchemaException(this.message);
+
+  /// Describes why the schema operation failed.
+  final String message;
+
+  @override
+  String toString() => 'CollectionSchemaException: $message';
 }
