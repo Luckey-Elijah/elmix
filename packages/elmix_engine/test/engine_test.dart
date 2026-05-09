@@ -252,6 +252,96 @@ void main() {
       },
     );
 
+    test('authorizes new saves with create access rules', () async {
+      final storage = InMemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: [
+            SchemaField(name: 'title', type: FieldType.text),
+          ],
+          accessRules: {
+            CollectionOperation.create: AccessRule('false'),
+            CollectionOperation.update: AccessRule('true'),
+          },
+        ),
+      );
+
+      await expectLater(
+        engine
+            .collection('posts')
+            .save(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post-1'),
+                data: {'title': 'Bypass attempt'},
+              ),
+            ),
+        throwsA(isA<AuthorizationException>()),
+      );
+
+      expect(
+        await storage.getRecord(
+          collection: 'posts',
+          id: const RecordIdentifier('post-1'),
+        ),
+        isNull,
+      );
+    });
+
+    test('authorizes updates against stored record data', () async {
+      final storage = InMemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: [
+            SchemaField(name: 'owner', type: FieldType.text),
+            SchemaField(name: 'title', type: FieldType.text),
+          ],
+          accessRules: {
+            CollectionOperation.create: AccessRule('true'),
+            CollectionOperation.update: AccessRule(
+              'record.data.owner == auth.id',
+            ),
+          },
+        ),
+      );
+      final posts = engine.collection(
+        'posts',
+        context: const RequestContext(
+          authRecord: AuthRecordIdentity(
+            collection: 'members',
+            id: RecordIdentifier('member-1'),
+          ),
+        ),
+      );
+      await posts.create(
+        const Record(
+          collection: 'posts',
+          id: RecordIdentifier('post-1'),
+          data: {'owner': 'member-2', 'title': 'Original'},
+        ),
+      );
+
+      await expectLater(
+        posts.update(
+          const Record(
+            collection: 'posts',
+            id: RecordIdentifier('post-1'),
+            data: {'owner': 'member-1', 'title': 'Spoofed'},
+          ),
+        ),
+        throwsA(isA<AuthorizationException>()),
+      );
+
+      expect(
+        (await posts.get(const RecordIdentifier('post-1')))?.data,
+        {'owner': 'member-2', 'title': 'Original'},
+      );
+    });
+
     test(
       'runs collection hooks around authorized collection operations',
       () async {

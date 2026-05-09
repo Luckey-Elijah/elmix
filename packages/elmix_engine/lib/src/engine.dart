@@ -142,7 +142,7 @@ class CollectionHandle {
     _authorize(
       schema: schema,
       operation: CollectionOperation.create,
-      record: record,
+      requestRecord: record,
     );
     await _runHooks(
       operation: CollectionOperation.create,
@@ -174,20 +174,27 @@ class CollectionHandle {
   /// Saves [record] to this collection.
   Future<Record> save(Record record) async {
     final schema = await _requireSchema();
+    await _validateRecord(record, schema: schema, requireIdentifier: false);
+    final existing = record.id.value.trim().isEmpty
+        ? null
+        : await _storage.getRecord(collection: name, id: record.id);
+    final operation = existing == null
+        ? CollectionOperation.create
+        : CollectionOperation.update;
     _authorize(
       schema: schema,
-      operation: CollectionOperation.update,
-      record: record,
+      operation: operation,
+      record: existing,
+      requestRecord: record,
     );
     await _runHooks(
-      operation: CollectionOperation.update,
+      operation: operation,
       phase: HookPhase.before,
       record: record,
     );
-    await _validateRecord(record, schema: schema, requireIdentifier: false);
     final saved = await _storage.putRecord(record);
     await _runHooks(
-      operation: CollectionOperation.update,
+      operation: operation,
       phase: HookPhase.after,
       record: saved,
     );
@@ -219,16 +226,6 @@ class CollectionHandle {
   /// Updates [record] in this collection.
   Future<Record> update(Record record) async {
     final schema = await _requireSchema();
-    _authorize(
-      schema: schema,
-      operation: CollectionOperation.update,
-      record: record,
-    );
-    await _runHooks(
-      operation: CollectionOperation.update,
-      phase: HookPhase.before,
-      record: record,
-    );
     await _validateRecord(record, schema: schema);
     final existing = await _storage.getRecord(collection: name, id: record.id);
     if (existing == null) {
@@ -237,6 +234,17 @@ class CollectionHandle {
       );
     }
 
+    _authorize(
+      schema: schema,
+      operation: CollectionOperation.update,
+      record: existing,
+      requestRecord: record,
+    );
+    await _runHooks(
+      operation: CollectionOperation.update,
+      phase: HookPhase.before,
+      record: record,
+    );
     final updated = await _storage.putRecord(record);
     await _runHooks(
       operation: CollectionOperation.update,
@@ -351,13 +359,18 @@ class CollectionHandle {
     required CollectionSchema schema,
     required CollectionOperation operation,
     Record? record,
+    Record? requestRecord,
   }) {
     final rule = schema.accessRules[operation];
     if (rule == null || rule.expression.trim().isEmpty) {
       return;
     }
 
-    if (!_AccessRuleEvaluator(context: _context, record: record).allows(rule)) {
+    if (!_AccessRuleEvaluator(
+      context: _context,
+      record: record,
+      requestRecord: requestRecord,
+    ).allows(rule)) {
       throw AuthorizationException(
         'Collection "$name" ${operation.name} request is not authorized.',
       );
@@ -440,11 +453,14 @@ class _AccessRuleEvaluator {
   _AccessRuleEvaluator({
     required RequestContext context,
     Record? record,
+    Record? requestRecord,
   }) : _context = context,
-       _record = record;
+       _record = record,
+       _requestRecord = requestRecord;
 
   final RequestContext _context;
   final Record? _record;
+  final Record? _requestRecord;
 
   bool allows(AccessRule rule) {
     final expression = rule.expression.trim();
@@ -512,7 +528,7 @@ class _AccessRuleEvaluator {
       final field when field.startsWith('record.data.') =>
         _record?.data[field.substring('record.data.'.length)],
       final field when field.startsWith('request.data.') =>
-        _record?.data[field.substring('request.data.'.length)],
+        _requestRecord?.data[field.substring('request.data.'.length)],
       _ => null,
     };
   }
