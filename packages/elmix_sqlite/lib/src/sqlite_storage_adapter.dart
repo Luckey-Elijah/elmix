@@ -19,7 +19,7 @@ class SqliteStorageAdapter implements StorageAdapter {
 
   /// Closes the underlying SQLite connection.
   void close() {
-    _database.dispose();
+    _database.close();
   }
 
   @override
@@ -39,7 +39,7 @@ class SqliteStorageAdapter implements StorageAdapter {
           jsonEncode(_schemaToJson(schema)),
         ]);
       } finally {
-        statement.dispose();
+        statement.close();
       }
     });
   }
@@ -194,7 +194,7 @@ class SqliteStorageAdapter implements StorageAdapter {
     try {
       statement.execute(<Object?>[id.value]);
     } finally {
-      statement.dispose();
+      statement.close();
     }
   }
 
@@ -263,7 +263,7 @@ class SqliteStorageAdapter implements StorageAdapter {
         ),
       ]);
     } finally {
-      statement.dispose();
+      statement.close();
     }
   }
 
