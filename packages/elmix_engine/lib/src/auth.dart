@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:elmix_engine/src/record.dart';
 
 /// Auth Record identity attached to one Engine request.
@@ -49,6 +52,30 @@ class AuthRecordAuthenticationException implements Exception {
 
   @override
   String toString() => 'AuthRecordAuthenticationException: $message';
+}
+
+/// Password hashing helpers for Auth Records and password fields.
+class AuthPassword {
+  static const _prefix = 'sha256:';
+
+  /// Returns a stored password hash for [password].
+  static String hash(String password) {
+    final digest = sha256.convert(utf8.encode(password));
+    return '$_prefix$digest';
+  }
+
+  /// Whether [stored] is a password hash produced by [hash].
+  static bool isHash(Object? stored) {
+    return stored is String && stored.startsWith(_prefix);
+  }
+
+  /// Verifies [password] against a stored hash.
+  static bool verify({
+    required String password,
+    required Object? stored,
+  }) {
+    return stored is String && stored == hash(password);
+  }
 }
 
 /// Stable identity for an admin account.

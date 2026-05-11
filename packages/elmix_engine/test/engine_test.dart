@@ -703,6 +703,8 @@ void main() {
         );
 
         expect(authRecord.id.value, 'member-1');
+        expect(authRecord.data['password'], isNot('secret'));
+        expect(AuthPassword.isHash(authRecord.data['password']), isTrue);
         await expectLater(
           engine.collection('members').list(),
           throwsA(isA<AuthorizationException>()),

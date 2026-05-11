@@ -552,6 +552,11 @@ void main() {
 
         expect(auth.statusCode, 200);
         expect(token, 'record-session:members:member_1');
+        expect(
+          ((auth.body! as Map<String, Object?>)['record']!
+              as Map<String, Object?>)['data'],
+          <String, Object?>{'email': 'member@example.test'},
+        );
         expect(allowed.statusCode, 200);
         expect((allowed.body! as Map<String, Object?>)['totalItems'], 1);
       },

@@ -236,7 +236,7 @@ class ElmixServer {
     );
     return ElmixHttpResponse.ok(<String, Object?>{
       'token': token,
-      'record': _recordToJson(record),
+      'record': _recordToJson(record, includePasswordFields: false),
     });
   }
 
@@ -391,11 +391,21 @@ class ElmixServer {
 
   // TODO(elijah): make part of Record class..
   // TODO(elijah): override in subclasses where needed
-  Map<String, Object?> _recordToJson(Record record) {
+  Map<String, Object?> _recordToJson(
+    Record record, {
+    bool includePasswordFields = true,
+  }) {
     return <String, Object?>{
       'collection': record.collection,
       'id': record.id.value,
-      'data': _jsonValue(record.data),
+      'data': _jsonValue(
+        includePasswordFields
+            ? record.data
+            : <String, Object?>{
+                for (final entry in record.data.entries)
+                  if (!AuthPassword.isHash(entry.value)) entry.key: entry.value,
+              },
+      ),
     };
   }
 
