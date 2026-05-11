@@ -459,7 +459,7 @@ void main() {
       final response = await server.handle(
         const ElmixHttpRequest(
           method: 'POST',
-          path: '/api/admins/auth-with-password',
+          path: '/api/admin/auth-with-password',
           body: <String, Object?>{
             'email': 'admin@example.test',
             'password': 'admin-secret',
@@ -581,7 +581,7 @@ void main() {
         final auth = await server.handle(
           const ElmixHttpRequest(
             method: 'POST',
-            path: '/api/admins/auth-with-password',
+            path: '/api/admin/auth-with-password',
             body: <String, Object?>{
               'email': 'admin@example.test',
               'password': 'admin-secret',

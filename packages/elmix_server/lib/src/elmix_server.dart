@@ -49,132 +49,108 @@ class ElmixServer {
   }
 
   Future<ElmixHttpResponse> _handle(ElmixHttpRequest request) async {
-    final segments = request.pathSegments;
-    if (segments case ['api', 'admins', 'auth-with-password']) {
-      if (request.method == 'POST') {
-        return _authenticateAdmin(request);
-      }
-      return _notFound();
-    }
+    if (request.pathSegments case ['api', ...final apiSegments]) {
+      if (apiSegments case ['admin', ...final adminSegments]) {
+        if (adminSegments case ['auth-with-password']) {
+          if (request.method == 'POST') return _authenticateAdmin(request);
+        }
+        if (adminSegments case ['collections']) {
+          final adminRequired = _requireAdminSession(request);
+          if (adminRequired != null) {
+            return adminRequired;
+          }
+          if (request.method == 'GET') {
+            final schemas = await engine.listCollections();
+            return ElmixHttpResponse.ok(<String, Object?>{
+              'items': schemas.map(_schemaToJson).toList(),
+            });
+          }
+          if (request.method == 'POST') {
+            final schema = _schemaFromJson(request.body);
+            await engine.registerCollection(schema);
+            return ElmixHttpResponse.created(_schemaToJson(schema));
+          }
+        }
 
-    if (segments case [
-      'api',
-      'collections',
-      final collection,
-      'auth-with-password',
-    ]) {
-      if (request.method == 'POST') {
-        return _authenticateAuthRecord(
-          collection: collection,
-          request: request,
-        );
-      }
-      return _notFound();
-    }
+        if (adminSegments case ['collections', final collection]) {
+          final adminRequired = _requireAdminSession(request);
+          if (adminRequired != null) {
+            return adminRequired;
+          }
 
-    if (segments case ['api', 'admin', 'collections']) {
-      final adminRequired = _requireAdminSession(request);
-      if (adminRequired != null) {
-        return adminRequired;
-      }
-      if (request.method == 'GET') {
-        final schemas = await engine.listCollections();
-        return ElmixHttpResponse.ok(<String, Object?>{
-          'items': schemas.map(_schemaToJson).toList(),
-        });
-      }
-      if (request.method == 'POST') {
-        final schema = _schemaFromJson(request.body);
-        await engine.registerCollection(schema);
-        return ElmixHttpResponse.created(_schemaToJson(schema));
-      }
-    }
+          if (request.method == 'GET') {
+            final schema = await engine.getCollectionSchema(collection);
+            if (schema == null) {
+              return _notFound();
+            }
+            return ElmixHttpResponse.ok(_schemaToJson(schema));
+          }
+          if (request.method == 'PUT' || request.method == 'PATCH') {
+            final schema = _schemaFromJson(request.body);
+            await engine.updateCollectionSchema(schema);
+            return ElmixHttpResponse.ok(_schemaToJson(schema));
+          }
+        }
 
-    if (segments case [
-      'api',
-      'admin',
-      'collections',
-      final collection,
-    ]) {
-      final adminRequired = _requireAdminSession(request);
-      if (adminRequired != null) {
-        return adminRequired;
+        if (adminSegments case [
+          'collections',
+          final collection,
+          'records',
+        ]) {
+          final adminRequired = _requireAdminSession(request);
+          if (adminRequired != null) {
+            return adminRequired;
+          }
+          return _handleRecordCollectionRoute(
+            request: request,
+            collection: collection,
+          );
+        }
+
+        if (adminSegments case [
+          'collections',
+          final collection,
+          'records',
+          final id,
+        ]) {
+          final adminRequired = _requireAdminSession(request);
+          if (adminRequired != null) {
+            return adminRequired;
+          }
+          return _handleRecordRoute(
+            request: request,
+            collection: collection,
+            id: RecordIdentifier(id),
+          );
+        }
       }
 
-      if (request.method == 'GET') {
-        final schema = await engine.getCollectionSchema(collection);
-        if (schema == null) {
+      if (apiSegments case ['collections', ...final collectionSegments]) {
+        if (collectionSegments case [final collection, 'auth-with-password']) {
+          if (request.method == 'POST') {
+            return _authenticateAuthRecord(
+              collection: collection,
+              request: request,
+            );
+          }
           return _notFound();
         }
-        return ElmixHttpResponse.ok(_schemaToJson(schema));
-      }
-      if (request.method == 'PUT' || request.method == 'PATCH') {
-        final schema = _schemaFromJson(request.body);
-        await engine.updateCollectionSchema(schema);
-        return ElmixHttpResponse.ok(_schemaToJson(schema));
-      }
-    }
 
-    if (segments case [
-      'api',
-      'admin',
-      'collections',
-      final collection,
-      'records',
-    ]) {
-      final adminRequired = _requireAdminSession(request);
-      if (adminRequired != null) {
-        return adminRequired;
+        if (collectionSegments case [final collection, 'records']) {
+          return _handleRecordCollectionRoute(
+            request: request,
+            collection: collection,
+          );
+        }
+
+        if (collectionSegments case [final collection, 'records', final id]) {
+          return _handleRecordRoute(
+            request: request,
+            collection: collection,
+            id: RecordIdentifier(id),
+          );
+        }
       }
-      return _handleRecordCollectionRoute(
-        request: request,
-        collection: collection,
-      );
-    }
-
-    if (segments case [
-      'api',
-      'admin',
-      'collections',
-      final collection,
-      'records',
-      final id,
-    ]) {
-      final adminRequired = _requireAdminSession(request);
-      if (adminRequired != null) {
-        return adminRequired;
-      }
-      return _handleRecordRoute(
-        request: request,
-        collection: collection,
-        id: RecordIdentifier(id),
-      );
-    }
-
-    if (segments case [
-      'api',
-      'collections',
-      final collection,
-      'records',
-    ]) {
-      return _handleRecordCollectionRoute(
-        request: request,
-        collection: collection,
-      );
-    }
-
-    if (segments case [
-      'api',
-      'collections',
-      final collection,
-      'records',
-      final id,
-    ]) {
-      return _handleRecordRoute(
-        request: request,
-        collection: collection,
-        id: RecordIdentifier(id),
-      );
     }
 
     return _notFound();
