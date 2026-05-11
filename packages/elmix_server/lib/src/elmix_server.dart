@@ -50,24 +50,29 @@ class ElmixServer {
 
   Future<ElmixHttpResponse> _handle(ElmixHttpRequest request) async {
     final segments = request.pathSegments;
-    if (_matchesAdminAuthRoute(segments)) {
+    if (segments case ['api', 'admins', 'auth-with-password']) {
       if (request.method == 'POST') {
         return _authenticateAdmin(request);
       }
       return _notFound();
     }
 
-    if (_matchesAuthRecordAuthRoute(segments)) {
+    if (segments case [
+      'api',
+      'collections',
+      final collection,
+      'auth-with-password',
+    ]) {
       if (request.method == 'POST') {
         return _authenticateAuthRecord(
-          collection: segments[2],
+          collection: collection,
           request: request,
         );
       }
       return _notFound();
     }
 
-    if (_matchesAdminCollectionsRoute(segments)) {
+    if (segments case ['api', 'admin', 'collections']) {
       final adminRequired = _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
@@ -85,12 +90,17 @@ class ElmixServer {
       }
     }
 
-    if (_matchesAdminCollectionRoute(segments)) {
+    if (segments case [
+      'api',
+      'admin',
+      'collections',
+      final collection,
+    ]) {
       final adminRequired = _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
-      final collection = segments[3];
+
       if (request.method == 'GET') {
         final schema = await engine.getCollectionSchema(collection);
         if (schema == null) {
@@ -105,41 +115,65 @@ class ElmixServer {
       }
     }
 
-    if (_matchesAdminRecordsCollectionRoute(segments)) {
+    if (segments case [
+      'api',
+      'admin',
+      'collections',
+      final collection,
+      'records',
+    ]) {
       final adminRequired = _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
       return _handleRecordCollectionRoute(
         request: request,
-        collection: segments[3],
+        collection: collection,
       );
     }
 
-    if (_matchesAdminRecordRoute(segments)) {
+    if (segments case [
+      'api',
+      'admin',
+      'collections',
+      final collection,
+      'records',
+      final id,
+    ]) {
       final adminRequired = _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
       return _handleRecordRoute(
         request: request,
-        collection: segments[3],
-        id: RecordIdentifier(segments[5]),
+        collection: collection,
+        id: RecordIdentifier(id),
       );
     }
 
-    if (_matchesRecordsCollectionRoute(segments)) {
+    if (segments case [
+      'api',
+      'collections',
+      final collection,
+      'records',
+    ]) {
       return _handleRecordCollectionRoute(
         request: request,
-        collection: segments[2],
+        collection: collection,
       );
     }
 
-    if (_matchesRecordRoute(segments)) {
+    if (segments case [
+      'api',
+      'collections',
+      final collection,
+      'records',
+      final id,
+    ]) {
       return _handleRecordRoute(
         request: request,
-        collection: segments[2],
-        id: RecordIdentifier(segments[4]),
+        collection: collection,
+        id: RecordIdentifier(id),
       );
     }
 
@@ -346,64 +380,6 @@ class ElmixServer {
         },
       },
     );
-  }
-
-  bool _matchesAdminAuthRoute(List<String> segments) {
-    return segments.length == 3 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admins' &&
-        segments[2] == 'auth-with-password';
-  }
-
-  bool _matchesAuthRecordAuthRoute(List<String> segments) {
-    return segments.length == 4 &&
-        segments[0] == 'api' &&
-        segments[1] == 'collections' &&
-        segments[3] == 'auth-with-password';
-  }
-
-  bool _matchesRecordsCollectionRoute(List<String> segments) {
-    return segments.length == 4 &&
-        segments[0] == 'api' &&
-        segments[1] == 'collections' &&
-        segments[3] == 'records';
-  }
-
-  bool _matchesRecordRoute(List<String> segments) {
-    return segments.length == 5 &&
-        segments[0] == 'api' &&
-        segments[1] == 'collections' &&
-        segments[3] == 'records';
-  }
-
-  bool _matchesAdminCollectionsRoute(List<String> segments) {
-    return segments.length == 3 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admin' &&
-        segments[2] == 'collections';
-  }
-
-  bool _matchesAdminCollectionRoute(List<String> segments) {
-    return segments.length == 4 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admin' &&
-        segments[2] == 'collections';
-  }
-
-  bool _matchesAdminRecordsCollectionRoute(List<String> segments) {
-    return segments.length == 5 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admin' &&
-        segments[2] == 'collections' &&
-        segments[4] == 'records';
-  }
-
-  bool _matchesAdminRecordRoute(List<String> segments) {
-    return segments.length == 6 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admin' &&
-        segments[2] == 'collections' &&
-        segments[4] == 'records';
   }
 
   Map<String, Object?> _recordPageToJson(RecordPage page) {
@@ -628,11 +604,11 @@ class ElmixHttpRequest {
     final token = bearerToken;
     if (token != null) {
       final parts = token.split(':');
-      if (parts.length == 3 && parts[0] == 'record') {
+      if (parts case ['record', final collection, final id]) {
         return RequestContext(
           authRecord: AuthRecordIdentity(
-            collection: parts[1],
-            id: RecordIdentifier(parts[2]),
+            collection: collection,
+            id: RecordIdentifier(id),
           ),
         );
       }
