@@ -31,7 +31,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/collections/posts/records',
         ),
       );
@@ -70,7 +70,7 @@ void main() {
 
       final create = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/collections/posts/records',
           body: <String, Object?>{
             'id': 'post_1',
@@ -86,7 +86,7 @@ void main() {
 
       final view = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/collections/posts/records/post_1',
         ),
       );
@@ -102,7 +102,7 @@ void main() {
 
       final update = await server.handle(
         const ElmixHttpRequest(
-          method: 'PATCH',
+          method: .patch,
           path: '/api/collections/posts/records/post_1',
           body: <String, Object?>{
             'data': <String, Object?>{
@@ -123,7 +123,7 @@ void main() {
 
       final delete = await server.handle(
         const ElmixHttpRequest(
-          method: 'DELETE',
+          method: .delete,
           path: '/api/collections/posts/records/post_1',
         ),
       );
@@ -132,7 +132,7 @@ void main() {
 
       final missing = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/collections/posts/records/post_1',
         ),
       );
@@ -172,7 +172,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'PATCH',
+          method: .patch,
           path: '/api/collections/posts/records/post_1',
           body: <String, Object?>{
             'data': <String, Object?>{'published': true},
@@ -209,7 +209,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/collections/events/records',
           body: <String, Object?>{
             'id': 'event_1',
@@ -258,7 +258,7 @@ void main() {
 
         final denied = await server.handle(
           const ElmixHttpRequest(
-            method: 'GET',
+            method: .get,
             path: '/api/collections/posts/records',
           ),
         );
@@ -272,7 +272,7 @@ void main() {
 
         final allowed = await server.handle(
           const ElmixHttpRequest(
-            method: 'GET',
+            method: .get,
             path: '/api/collections/posts/records',
             headers: <String, String>{
               'x-elmix-auth-collection': 'members',
@@ -293,7 +293,7 @@ void main() {
 
       final create = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/admin/collections',
           body: <String, Object?>{
             'name': 'posts',
@@ -321,7 +321,7 @@ void main() {
 
       final list = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/admin/collections',
         ),
       );
@@ -333,7 +333,7 @@ void main() {
 
       final view = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/admin/collections/posts',
         ),
       );
@@ -345,7 +345,7 @@ void main() {
 
       final update = await server.handle(
         const ElmixHttpRequest(
-          method: 'PUT',
+          method: .put,
           path: '/api/admin/collections/posts',
           body: <String, Object?>{
             'name': 'posts',
@@ -389,7 +389,7 @@ void main() {
 
       final create = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/admin/collections/posts/records',
           body: <String, Object?>{
             'id': 'post_1',
@@ -401,7 +401,7 @@ void main() {
 
       final list = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/admin/collections/posts/records',
         ),
       );
@@ -410,7 +410,7 @@ void main() {
 
       final view = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/admin/collections/posts/records/post_1',
         ),
       );
@@ -419,7 +419,7 @@ void main() {
 
       final update = await server.handle(
         const ElmixHttpRequest(
-          method: 'PATCH',
+          method: .patch,
           path: '/api/admin/collections/posts/records/post_1',
           body: <String, Object?>{
             'data': <String, Object?>{'title': 'Admin updated'},
@@ -434,7 +434,7 @@ void main() {
 
       final delete = await server.handle(
         const ElmixHttpRequest(
-          method: 'DELETE',
+          method: .delete,
           path: '/api/admin/collections/posts/records/post_1',
         ),
       );
@@ -458,7 +458,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/admin/auth-with-password',
           body: <String, Object?>{
             'email': 'admin@example.test',
@@ -533,7 +533,7 @@ void main() {
 
         final auth = await server.handle(
           const ElmixHttpRequest(
-            method: 'POST',
+            method: .post,
             path: '/api/collections/members/auth-with-password',
             body: <String, Object?>{
               'email': 'member@example.test',
@@ -544,7 +544,7 @@ void main() {
         final token = (auth.body! as Map<String, Object?>)['token']! as String;
         final allowed = await server.handle(
           ElmixHttpRequest(
-            method: 'GET',
+            method: .get,
             path: '/api/collections/posts/records',
             headers: <String, String>{'authorization': 'Bearer $token'},
           ),
@@ -584,7 +584,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/collections/posts/records',
           headers: <String, String>{
             'authorization': 'Bearer record:members:member_1',
@@ -632,7 +632,7 @@ void main() {
 
         final response = await server.handle(
           const ElmixHttpRequest(
-            method: 'POST',
+            method: .post,
             path: '/api/collections/members/auth-with-password',
             body: <String, Object?>{
               'email': 'member@example.test',
@@ -666,13 +666,13 @@ void main() {
 
         final rejected = await server.handle(
           const ElmixHttpRequest(
-            method: 'GET',
+            method: .get,
             path: '/api/admin/collections',
           ),
         );
         final auth = await server.handle(
           const ElmixHttpRequest(
-            method: 'POST',
+            method: .post,
             path: '/api/admin/auth-with-password',
             body: <String, Object?>{
               'email': 'admin@example.test',
@@ -683,7 +683,7 @@ void main() {
         final token = (auth.body! as Map<String, Object?>)['token']! as String;
         final accepted = await server.handle(
           ElmixHttpRequest(
-            method: 'GET',
+            method: .get,
             path: '/api/admin/collections',
             headers: <String, String>{'authorization': 'Bearer $token'},
           ),
