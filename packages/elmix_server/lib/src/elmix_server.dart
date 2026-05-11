@@ -121,13 +121,18 @@ class ElmixServer {
       return ElmixHttpResponse.ok(_recordPageToJson(page));
     }
     if (request.method == 'POST') {
+      final schema = await engine.getCollectionSchema(collection);
       final created = await engine
           .collection(
             collection,
             context: request.context,
           )
           .create(
-            _recordFromJson(collection: collection, body: request.body),
+            _recordFromJson(
+              collection: collection,
+              body: request.body,
+              schema: schema,
+            ),
           );
       return ElmixHttpResponse.created(_recordToJson(created));
     }
@@ -147,9 +152,32 @@ class ElmixServer {
       }
       return ElmixHttpResponse.ok(_recordToJson(record));
     }
-    if (request.method == 'PATCH' || request.method == 'PUT') {
+    if (request.method == 'PATCH') {
+      final existing = await records.get(id);
+      if (existing == null) {
+        return _notFound();
+      }
+      final schema = await engine.getCollectionSchema(collection);
       final updated = await records.update(
-        _recordFromJson(collection: collection, id: id, body: request.body),
+        _recordFromJson(
+          collection: collection,
+          id: id,
+          body: request.body,
+          schema: schema,
+          existingData: existing.data,
+        ),
+      );
+      return ElmixHttpResponse.ok(_recordToJson(updated));
+    }
+    if (request.method == 'PUT') {
+      final schema = await engine.getCollectionSchema(collection);
+      final updated = await records.update(
+        _recordFromJson(
+          collection: collection,
+          id: id,
+          body: request.body,
+          schema: schema,
+        ),
       );
       return ElmixHttpResponse.ok(_recordToJson(updated));
     }
@@ -245,27 +273,81 @@ class ElmixServer {
     return <String, Object?>{
       'collection': record.collection,
       'id': record.id.value,
-      'data': record.data,
+      'data': _jsonValue(record.data),
     };
   }
 
   Record _recordFromJson({
     required String collection,
     required Object? body,
+    required CollectionSchema? schema,
     RecordIdentifier id = const RecordIdentifier(''),
+    Map<String, Object?> existingData = const <String, Object?>{},
   }) {
     final object = body is Map<String, Object?> ? body : <String, Object?>{};
     final bodyId = object['id'];
     final bodyData = object['data'];
+    final decodedData = _decodeRecordData(
+      bodyData is Map<String, Object?> ? bodyData : const <String, Object?>{},
+      schema: schema,
+    );
     return Record(
       collection: collection,
       id: id.value.isNotEmpty
           ? id
           : RecordIdentifier(bodyId is String ? bodyId : ''),
-      data: bodyData is Map<String, Object?>
-          ? bodyData
-          : const <String, Object?>{},
+      data: <String, Object?>{
+        ...existingData,
+        ...decodedData,
+      },
     );
+  }
+
+  Map<String, Object?> _decodeRecordData(
+    Map<String, Object?> data, {
+    required CollectionSchema? schema,
+  }) {
+    if (schema == null) {
+      return data;
+    }
+
+    final dateFields = <String>{
+      for (final field in schema.fields)
+        if (field.type == FieldType.date) field.name,
+    };
+    return <String, Object?>{
+      for (final entry in data.entries)
+        entry.key: dateFields.contains(entry.key)
+            ? _decodeDateField(entry.key, entry.value)
+            : entry.value,
+    };
+  }
+
+  Object? _decodeDateField(String field, Object? value) {
+    if (value == null || value is DateTime) {
+      return value;
+    }
+    if (value is String) {
+      try {
+        return DateTime.parse(value);
+      } on FormatException {
+        throw RecordValidationException(
+          'Field "$field" must be an ISO-8601 date string.',
+        );
+      }
+    }
+    return value;
+  }
+
+  Object? _jsonValue(Object? value) {
+    return switch (value) {
+      final DateTime date => date.toUtc().toIso8601String(),
+      final Map<String, Object?> map => <String, Object?>{
+        for (final entry in map.entries) entry.key: _jsonValue(entry.value),
+      },
+      final List<Object?> list => list.map(_jsonValue).toList(),
+      _ => value,
+    };
   }
 
   Map<String, Object?> _schemaToJson(CollectionSchema schema) {

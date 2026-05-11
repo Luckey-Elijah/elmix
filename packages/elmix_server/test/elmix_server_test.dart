@@ -139,6 +139,103 @@ void main() {
       expect(missing.statusCode, 404);
     });
 
+    test('merges PATCH data with the existing record', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'body', type: FieldType.text, required: true),
+            SchemaField(name: 'published', type: FieldType.bool),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        ),
+      );
+      await engine
+          .collection('posts')
+          .create(
+            const Record(
+              collection: 'posts',
+              id: RecordIdentifier('post_1'),
+              data: <String, Object?>{
+                'title': 'Draft',
+                'body': 'Original body',
+                'published': false,
+              },
+            ),
+          );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: 'PATCH',
+          path: '/api/collections/posts/records/post_1',
+          body: <String, Object?>{
+            'data': <String, Object?>{'published': true},
+          },
+        ),
+      );
+
+      expect(response.statusCode, 200);
+      expect(
+        (response.body! as Map<String, Object?>)['data'],
+        <String, Object?>{
+          'title': 'Draft',
+          'body': 'Original body',
+          'published': true,
+        },
+      );
+    });
+
+    test('decodes JSON date strings before Engine validation', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'events',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'startsAt', type: FieldType.date, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        ),
+      );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: 'POST',
+          path: '/api/collections/events/records',
+          body: <String, Object?>{
+            'id': 'event_1',
+            'data': <String, Object?>{
+              'startsAt': '2026-05-11T14:44:35.000Z',
+            },
+          },
+        ),
+      );
+
+      expect(response.statusCode, 201);
+      expect(
+        (response.body! as Map<String, Object?>)['data'],
+        <String, Object?>{
+          'startsAt': '2026-05-11T14:44:35.000Z',
+        },
+      );
+      expect(
+        (await engine
+                .collection('events')
+                .get(const RecordIdentifier('event_1')))!
+            .data['startsAt'],
+        DateTime.utc(2026, 5, 11, 14, 44, 35),
+      );
+    });
+
     test(
       'passes request auth context into Engine and returns errors',
       () async {
