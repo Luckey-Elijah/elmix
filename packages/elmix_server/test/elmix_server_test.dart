@@ -551,9 +551,101 @@ void main() {
         );
 
         expect(auth.statusCode, 200);
-        expect(token, 'record:members:member_1');
+        expect(token, 'record-session:members:member_1');
         expect(allowed.statusCode, 200);
         expect((allowed.body! as Map<String, Object?>)['totalItems'], 1);
+      },
+    );
+
+    test('does not trust forged Auth Record bearer tokens', () async {
+      final engine = ElmixEngine(storage: MemoryStorageAdapter());
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{
+            CollectionOperation.list: AccessRule('auth.id == "member_1"'),
+          },
+        ),
+      );
+      await engine
+          .collection('posts')
+          .create(
+            const Record(
+              collection: 'posts',
+              id: RecordIdentifier('post_1'),
+              data: <String, Object?>{'title': 'Protected'},
+            ),
+          );
+      final server = ElmixServer(engine);
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: 'GET',
+          path: '/api/collections/posts/records',
+          headers: <String, String>{
+            'authorization': 'Bearer record:members:member_1',
+          },
+        ),
+      );
+
+      expect(response.statusCode, 403);
+    });
+
+    test(
+      'authenticates Auth Records without using the public list rule',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        await engine.registerCollection(
+          const CollectionSchema.auth(
+            name: 'members',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'email', type: FieldType.email, required: true),
+              SchemaField(
+                name: 'password',
+                type: FieldType.password,
+                required: true,
+              ),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{
+              CollectionOperation.list: AccessRule('false'),
+            },
+          ),
+        );
+        await engine
+            .collection('members')
+            .create(
+              const Record(
+                collection: 'members',
+                id: RecordIdentifier('member_1'),
+                data: <String, Object?>{
+                  'email': 'member@example.test',
+                  'password': 'secret',
+                },
+              ),
+            );
+        final server = ElmixServer(engine);
+
+        final response = await server.handle(
+          const ElmixHttpRequest(
+            method: 'POST',
+            path: '/api/collections/members/auth-with-password',
+            body: <String, Object?>{
+              'email': 'member@example.test',
+              'password': 'secret',
+            },
+          ),
+        );
+
+        expect(response.statusCode, 200);
+        expect(
+          (response.body! as Map<String, Object?>)['token'],
+          'record-session:members:member_1',
+        );
       },
     );
 
@@ -646,9 +738,20 @@ class MemoryStorageAdapter implements StorageAdapter {
     QueryExpression query = const QueryExpression(),
   }) async {
     final matching = (_records[collection]?.values ?? const <Record>[])
+        .where(
+          (record) => query.filters.every((filter) => _matches(record, filter)),
+        )
         .toList();
+    final start = (query.pagination.page - 1) * query.pagination.perPage;
+    final end = start + query.pagination.perPage;
+    final items = start >= matching.length
+        ? const <Record>[]
+        : matching.sublist(
+            start,
+            end > matching.length ? matching.length : end,
+          );
     return RecordPage(
-      items: List<Record>.unmodifiable(matching),
+      items: List<Record>.unmodifiable(items),
       page: query.pagination.page,
       perPage: query.pagination.perPage,
       totalItems: matching.length,
@@ -667,5 +770,34 @@ class MemoryStorageAdapter implements StorageAdapter {
       () => <String, Record>{},
     )[record.id.value] = record;
     return record;
+  }
+
+  bool _matches(Record record, QueryFilter filter) {
+    final value = filter.field == 'id'
+        ? record.id.value
+        : record.data[filter.field];
+    return switch (filter.operator) {
+      QueryOperator.equals => value == filter.value,
+      QueryOperator.notEquals => value != filter.value,
+      QueryOperator.greaterThan => _compare(value, filter.value) > 0,
+      QueryOperator.greaterThanOrEquals => _compare(value, filter.value) >= 0,
+      QueryOperator.lessThan => _compare(value, filter.value) < 0,
+      QueryOperator.lessThanOrEquals => _compare(value, filter.value) <= 0,
+    };
+  }
+
+  int _compare(Object? left, Object? right) {
+    return switch ((left, right)) {
+      (final num left, final num right) => left.compareTo(right),
+      (final String left, final String right) => left.compareTo(right),
+      (final bool left, final bool right) =>
+        left == right
+            ? 0
+            : left
+            ? 1
+            : -1,
+      (final DateTime left, final DateTime right) => left.compareTo(right),
+      _ => left == right ? 0 : -1,
+    };
   }
 }

@@ -78,6 +78,59 @@ class ElmixEngine {
     _authenticationHooks.add(hook);
   }
 
+  /// Authenticates an Auth Record by email and password.
+  Future<AuthRecord> authenticateAuthRecordWithPassword({
+    required String collection,
+    required String email,
+    required String password,
+  }) async {
+    final schema = await _storage.getCollectionSchema(collection);
+    if (schema == null || !schema.isAuthCollection) {
+      throw CollectionSchemaException(
+        'Collection "$collection" is not an Auth Collection.',
+      );
+    }
+
+    final page = await _storage.listRecords(
+      collection: collection,
+      query: QueryExpression(
+        filters: <QueryFilter>[
+          QueryFilter(
+            field: 'email',
+            operator: QueryOperator.equals,
+            value: email,
+          ),
+          QueryFilter(
+            field: 'password',
+            operator: QueryOperator.equals,
+            value: password,
+          ),
+        ],
+        pagination: const QueryPagination(perPage: 1),
+      ),
+    );
+    if (page.items.isEmpty) {
+      throw const AuthRecordAuthenticationException(
+        'Auth Record credentials are invalid.',
+      );
+    }
+
+    final record = page.items.first;
+    final identity = await runAuthenticationAction(
+      collection: collection,
+      action: AuthenticationOperation.authenticate,
+      run: () async => AuthRecordIdentity(
+        collection: collection,
+        id: record.id,
+      ),
+    );
+    return AuthRecord(
+      collection: identity.collection,
+      id: identity.id,
+      data: record.data,
+    );
+  }
+
   /// Runs an authentication [action] with before and after lifecycle hooks.
   Future<AuthRecordIdentity> runAuthenticationAction({
     required String collection,

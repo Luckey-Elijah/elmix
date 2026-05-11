@@ -16,6 +16,7 @@ class ElmixServer {
 
   final List<ServerAdminAccount> _adminAccounts;
   final Map<String, AdminAccount> _adminSessions = <String, AdminAccount>{};
+  final _authRecordSessions = <String, AuthRecordIdentity>{};
 
   /// Handles one HTTP-shaped Elmix request.
   Future<ElmixHttpResponse> handle(ElmixHttpRequest request) async {
@@ -192,40 +193,38 @@ class ElmixServer {
     required String collection,
     required ElmixHttpRequest request,
   }) async {
-    final schema = await engine.getCollectionSchema(collection);
-    if (schema == null || !schema.isAuthCollection) {
-      return _notFound();
-    }
-
     final object = request.body is Map<String, Object?>
         ? request.body! as Map<String, Object?>
         : const <String, Object?>{};
-    final email = object['email'];
-    final password = object['password'];
-    final page = await engine.collection(collection).list();
-    final records = page.items.where(
-      (record) =>
-          record.data['email'] == email && record.data['password'] == password,
-    );
-    if (records.isEmpty) {
+    final email = object['email'] is String ? object['email']! as String : '';
+    final password = object['password'] is String
+        ? object['password']! as String
+        : '';
+
+    late final AuthRecord record;
+    try {
+      record = await engine.authenticateAuthRecordWithPassword(
+        collection: collection,
+        email: email,
+        password: password,
+      );
+    } on AuthRecordAuthenticationException catch (error) {
       return _error(
         statusCode: 401,
         code: 'invalid_credentials',
-        message: 'Auth Record credentials are invalid.',
+        message: error.message,
       );
+    } on CollectionSchemaException {
+      return _notFound();
     }
 
-    final record = records.first;
-    final identity = await engine.runAuthenticationAction(
-      collection: collection,
-      action: AuthenticationOperation.authenticate,
-      run: () async => AuthRecordIdentity(
-        collection: collection,
-        id: record.id,
-      ),
+    final token = 'record-session:${record.collection}:${record.id.value}';
+    _authRecordSessions[token] = AuthRecordIdentity(
+      collection: record.collection,
+      id: record.id,
     );
     return ElmixHttpResponse.ok(<String, Object?>{
-      'token': 'record:${identity.collection}:${identity.id.value}',
+      'token': token,
       'record': _recordToJson(record),
     });
   }
@@ -236,11 +235,9 @@ class ElmixServer {
   }) async {
     if (request.method == 'GET') {
       final page = await engine
-          .collection(
-            collection,
-            context: request.context,
-          )
+          .collection(collection, context: _contextForRequest(request))
           .list();
+
       return ElmixHttpResponse.ok(_recordPageToJson(page));
     }
     if (request.method == 'POST') {
@@ -248,7 +245,7 @@ class ElmixServer {
       final created = await engine
           .collection(
             collection,
-            context: request.context,
+            context: _contextForRequest(request),
           )
           .create(
             _recordFromJson(
@@ -267,7 +264,10 @@ class ElmixServer {
     required String collection,
     required RecordIdentifier id,
   }) async {
-    final records = engine.collection(collection, context: request.context);
+    final records = engine.collection(
+      collection,
+      context: _contextForRequest(request),
+    );
     if (request.method == 'GET') {
       final record = await records.get(id);
       if (record == null) {
@@ -330,6 +330,19 @@ class ElmixServer {
     return _adminSessions[token];
   }
 
+  RequestContext _contextForRequest(ElmixHttpRequest request) {
+    final token = request.bearerToken;
+    if (token != null) {
+      final identity = _authRecordSessions[token];
+      if (identity != null) {
+        return RequestContext(authRecord: identity);
+      }
+      return RequestContext.anonymous;
+    }
+
+    return request.headerContext;
+  }
+
   ElmixHttpResponse _error({
     required int statusCode,
     required String code,
@@ -338,10 +351,7 @@ class ElmixServer {
     return ElmixHttpResponse(
       statusCode: statusCode,
       body: <String, Object?>{
-        'error': <String, Object?>{
-          'code': code,
-          'message': message,
-        },
+        'error': <String, Object?>{'code': code, 'message': message},
       },
     );
   }
@@ -575,21 +585,8 @@ class ElmixHttpRequest {
     return authorization.substring(prefix.length);
   }
 
-  /// The Engine request context represented by this HTTP request.
-  RequestContext get context {
-    final token = bearerToken;
-    if (token != null) {
-      final parts = token.split(':');
-      if (parts case ['record', final collection, final id]) {
-        return RequestContext(
-          authRecord: AuthRecordIdentity(
-            collection: collection,
-            id: RecordIdentifier(id),
-          ),
-        );
-      }
-    }
-
+  /// The Engine request context represented by explicit auth headers.
+  RequestContext get headerContext {
     final authCollection = headers['x-elmix-auth-collection'];
     final authId = headers['x-elmix-auth-id'];
     if (authCollection == null || authId == null) {

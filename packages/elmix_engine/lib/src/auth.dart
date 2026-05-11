@@ -39,6 +39,18 @@ class AuthRecord extends Record {
   });
 }
 
+/// Thrown when Auth Record credentials are not valid for an Auth Collection.
+class AuthRecordAuthenticationException implements Exception {
+  /// Creates an authentication failure with a human-readable [message].
+  const AuthRecordAuthenticationException(this.message);
+
+  /// Describes why authentication failed.
+  final String message;
+
+  @override
+  String toString() => 'AuthRecordAuthenticationException: $message';
+}
+
 /// Stable identity for an admin account.
 class AdminAccountIdentifier {
   /// Creates an admin account identifier.
