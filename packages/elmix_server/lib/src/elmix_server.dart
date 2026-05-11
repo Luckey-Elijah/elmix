@@ -6,10 +6,16 @@ import 'package:elmix_engine/elmix_engine.dart';
 /// details into the Engine.
 class ElmixServer {
   /// Creates a server boundary backed by [engine].
-  const ElmixServer(this.engine);
+  ElmixServer(
+    this.engine, {
+    List<ServerAdminAccount> adminAccounts = const <ServerAdminAccount>[],
+  }) : _adminAccounts = adminAccounts;
 
   /// The engine exposed through this server boundary.
   final ElmixEngine engine;
+
+  final List<ServerAdminAccount> _adminAccounts;
+  final Map<String, AdminAccount> _adminSessions = <String, AdminAccount>{};
 
   /// Handles one HTTP-shaped Elmix request.
   Future<ElmixHttpResponse> handle(ElmixHttpRequest request) async {
@@ -44,7 +50,28 @@ class ElmixServer {
 
   Future<ElmixHttpResponse> _handle(ElmixHttpRequest request) async {
     final segments = request.pathSegments;
+    if (_matchesAdminAuthRoute(segments)) {
+      if (request.method == 'POST') {
+        return _authenticateAdmin(request);
+      }
+      return _notFound();
+    }
+
+    if (_matchesAuthRecordAuthRoute(segments)) {
+      if (request.method == 'POST') {
+        return _authenticateAuthRecord(
+          collection: segments[2],
+          request: request,
+        );
+      }
+      return _notFound();
+    }
+
     if (_matchesAdminCollectionsRoute(segments)) {
+      final adminRequired = _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
       if (request.method == 'GET') {
         final schemas = await engine.listCollections();
         return ElmixHttpResponse.ok(<String, Object?>{
@@ -59,6 +86,10 @@ class ElmixServer {
     }
 
     if (_matchesAdminCollectionRoute(segments)) {
+      final adminRequired = _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
       final collection = segments[3];
       if (request.method == 'GET') {
         final schema = await engine.getCollectionSchema(collection);
@@ -75,6 +106,10 @@ class ElmixServer {
     }
 
     if (_matchesAdminRecordsCollectionRoute(segments)) {
+      final adminRequired = _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
       return _handleRecordCollectionRoute(
         request: request,
         collection: segments[3],
@@ -82,6 +117,10 @@ class ElmixServer {
     }
 
     if (_matchesAdminRecordRoute(segments)) {
+      final adminRequired = _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
       return _handleRecordRoute(
         request: request,
         collection: segments[3],
@@ -105,6 +144,80 @@ class ElmixServer {
     }
 
     return _notFound();
+  }
+
+  ElmixHttpResponse _authenticateAdmin(ElmixHttpRequest request) {
+    final object = request.body is Map<String, Object?>
+        ? request.body! as Map<String, Object?>
+        : const <String, Object?>{};
+    final email = object['email'];
+    final password = object['password'];
+    final account = _adminAccounts.where(
+      (candidate) => candidate.email == email && candidate.password == password,
+    );
+    if (account.isEmpty) {
+      return _error(
+        statusCode: 401,
+        code: 'invalid_credentials',
+        message: 'Admin Account credentials are invalid.',
+      );
+    }
+
+    final admin = AdminAccount(
+      id: account.first.id,
+      email: account.first.email,
+    );
+    final token = 'admin:${admin.id.value}';
+    _adminSessions[token] = admin;
+    return ElmixHttpResponse.ok(<String, Object?>{
+      'token': token,
+      'admin': <String, Object?>{
+        'id': admin.id.value,
+        'email': admin.email,
+      },
+    });
+  }
+
+  Future<ElmixHttpResponse> _authenticateAuthRecord({
+    required String collection,
+    required ElmixHttpRequest request,
+  }) async {
+    final schema = await engine.getCollectionSchema(collection);
+    if (schema == null || !schema.isAuthCollection) {
+      return _notFound();
+    }
+
+    final object = request.body is Map<String, Object?>
+        ? request.body! as Map<String, Object?>
+        : const <String, Object?>{};
+    final email = object['email'];
+    final password = object['password'];
+    final page = await engine.collection(collection).list();
+    final records = page.items.where(
+      (record) =>
+          record.data['email'] == email && record.data['password'] == password,
+    );
+    if (records.isEmpty) {
+      return _error(
+        statusCode: 401,
+        code: 'invalid_credentials',
+        message: 'Auth Record credentials are invalid.',
+      );
+    }
+
+    final record = records.first;
+    final identity = await engine.runAuthenticationAction(
+      collection: collection,
+      action: AuthenticationOperation.authenticate,
+      run: () async => AuthRecordIdentity(
+        collection: collection,
+        id: record.id,
+      ),
+    );
+    return ElmixHttpResponse.ok(<String, Object?>{
+      'token': 'record:${identity.collection}:${identity.id.value}',
+      'record': _recordToJson(record),
+    });
   }
 
   Future<ElmixHttpResponse> _handleRecordCollectionRoute({
@@ -188,6 +301,25 @@ class ElmixServer {
     return _notFound();
   }
 
+  ElmixHttpResponse? _requireAdminSession(ElmixHttpRequest request) {
+    if (_adminAccounts.isEmpty || _adminFromBearer(request) != null) {
+      return null;
+    }
+    return _error(
+      statusCode: 401,
+      code: 'admin_session_required',
+      message: 'An Admin Account session is required.',
+    );
+  }
+
+  AdminAccount? _adminFromBearer(ElmixHttpRequest request) {
+    final token = request.bearerToken;
+    if (token == null) {
+      return null;
+    }
+    return _adminSessions[token];
+  }
+
   ElmixHttpResponse _error({
     required int statusCode,
     required String code,
@@ -214,6 +346,20 @@ class ElmixServer {
         },
       },
     );
+  }
+
+  bool _matchesAdminAuthRoute(List<String> segments) {
+    return segments.length == 3 &&
+        segments[0] == 'api' &&
+        segments[1] == 'admins' &&
+        segments[2] == 'auth-with-password';
+  }
+
+  bool _matchesAuthRecordAuthRoute(List<String> segments) {
+    return segments.length == 4 &&
+        segments[0] == 'api' &&
+        segments[1] == 'collections' &&
+        segments[3] == 'auth-with-password';
   }
 
   bool _matchesRecordsCollectionRoute(List<String> segments) {
@@ -426,6 +572,25 @@ class ElmixServer {
   }
 }
 
+/// Admin Account credentials known to the server boundary.
+class ServerAdminAccount {
+  /// Creates a server-side Admin Account credential.
+  const ServerAdminAccount({
+    required this.id,
+    required this.email,
+    required this.password,
+  });
+
+  /// Stable Admin Account identifier.
+  final AdminAccountIdentifier id;
+
+  /// Admin Account email address.
+  final String email;
+
+  /// Password accepted by the server for this Admin Account.
+  final String password;
+}
+
 /// Transport-independent representation of an HTTP request.
 class ElmixHttpRequest {
   /// Creates an HTTP-shaped request for the Elmix server.
@@ -448,8 +613,31 @@ class ElmixHttpRequest {
   /// Request headers.
   final Map<String, String> headers;
 
+  /// Bearer token from the Authorization header, when present.
+  String? get bearerToken {
+    final authorization = headers['authorization'] ?? headers['Authorization'];
+    const prefix = 'Bearer ';
+    if (authorization == null || !authorization.startsWith(prefix)) {
+      return null;
+    }
+    return authorization.substring(prefix.length);
+  }
+
   /// The Engine request context represented by this HTTP request.
   RequestContext get context {
+    final token = bearerToken;
+    if (token != null) {
+      final parts = token.split(':');
+      if (parts.length == 3 && parts[0] == 'record') {
+        return RequestContext(
+          authRecord: AuthRecordIdentity(
+            collection: parts[1],
+            id: RecordIdentifier(parts[2]),
+          ),
+        );
+      }
+    }
+
     final authCollection = headers['x-elmix-auth-collection'];
     final authId = headers['x-elmix-auth-id'];
     if (authCollection == null || authId == null) {

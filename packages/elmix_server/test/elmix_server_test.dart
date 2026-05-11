@@ -441,6 +441,172 @@ void main() {
       expect(delete.statusCode, 204);
     });
   });
+
+  group('ElmixServer authentication', () {
+    test('authenticates Admin Accounts separately from Auth Records', () async {
+      final engine = ElmixEngine(storage: MemoryStorageAdapter());
+      final server = ElmixServer(
+        engine,
+        adminAccounts: const <ServerAdminAccount>[
+          ServerAdminAccount(
+            id: AdminAccountIdentifier('admin_1'),
+            email: 'admin@example.test',
+            password: 'admin-secret',
+          ),
+        ],
+      );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: 'POST',
+          path: '/api/admins/auth-with-password',
+          body: <String, Object?>{
+            'email': 'admin@example.test',
+            'password': 'admin-secret',
+          },
+        ),
+      );
+
+      expect(response.statusCode, 200);
+      expect((response.body! as Map<String, Object?>)['admin'], {
+        'id': 'admin_1',
+        'email': 'admin@example.test',
+      });
+      expect(response.body! as Map<String, Object?>, isNot(contains('record')));
+    });
+
+    test(
+      'authenticates Auth Records and uses bearer tokens for Access Rules',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        await engine.registerCollection(
+          const CollectionSchema.auth(
+            name: 'members',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'email', type: FieldType.email, required: true),
+              SchemaField(
+                name: 'password',
+                type: FieldType.password,
+                required: true,
+              ),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{},
+          ),
+        );
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'title', type: FieldType.text, required: true),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{
+              CollectionOperation.list: AccessRule(
+                'auth.collection == "members" && auth.id == "member_1"',
+              ),
+            },
+          ),
+        );
+        await engine
+            .collection('members')
+            .create(
+              const Record(
+                collection: 'members',
+                id: RecordIdentifier('member_1'),
+                data: <String, Object?>{
+                  'email': 'member@example.test',
+                  'password': 'secret',
+                },
+              ),
+            );
+        await engine
+            .collection('posts')
+            .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{'title': 'Member post'},
+              ),
+            );
+        final server = ElmixServer(engine);
+
+        final auth = await server.handle(
+          const ElmixHttpRequest(
+            method: 'POST',
+            path: '/api/collections/members/auth-with-password',
+            body: <String, Object?>{
+              'email': 'member@example.test',
+              'password': 'secret',
+            },
+          ),
+        );
+        final token = (auth.body! as Map<String, Object?>)['token']! as String;
+        final allowed = await server.handle(
+          ElmixHttpRequest(
+            method: 'GET',
+            path: '/api/collections/posts/records',
+            headers: <String, String>{'authorization': 'Bearer $token'},
+          ),
+        );
+
+        expect(auth.statusCode, 200);
+        expect(token, 'record:members:member_1');
+        expect(allowed.statusCode, 200);
+        expect((allowed.body! as Map<String, Object?>)['totalItems'], 1);
+      },
+    );
+
+    test(
+      'requires Admin Account sessions when admin credentials are configured',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        final server = ElmixServer(
+          engine,
+          adminAccounts: const <ServerAdminAccount>[
+            ServerAdminAccount(
+              id: AdminAccountIdentifier('admin_1'),
+              email: 'admin@example.test',
+              password: 'admin-secret',
+            ),
+          ],
+        );
+
+        final rejected = await server.handle(
+          const ElmixHttpRequest(
+            method: 'GET',
+            path: '/api/admin/collections',
+          ),
+        );
+        final auth = await server.handle(
+          const ElmixHttpRequest(
+            method: 'POST',
+            path: '/api/admins/auth-with-password',
+            body: <String, Object?>{
+              'email': 'admin@example.test',
+              'password': 'admin-secret',
+            },
+          ),
+        );
+        final token = (auth.body! as Map<String, Object?>)['token']! as String;
+        final accepted = await server.handle(
+          ElmixHttpRequest(
+            method: 'GET',
+            path: '/api/admin/collections',
+            headers: <String, String>{'authorization': 'Bearer $token'},
+          ),
+        );
+
+        expect(rejected.statusCode, 401);
+        expect(
+          ((rejected.body! as Map<String, Object?>)['error']!
+              as Map<String, Object?>)['code'],
+          'admin_session_required',
+        );
+        expect(accepted.statusCode, 200);
+      },
+    );
+  });
 }
 
 class MemoryStorageAdapter implements StorageAdapter {
