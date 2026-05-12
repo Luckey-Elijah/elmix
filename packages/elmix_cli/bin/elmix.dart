@@ -1,8 +1,9 @@
 import 'dart:io';
 
-import 'package:elmix_cli/elmix_cli.dart';
+import 'package:elmix_cli/src/command_runner.dart';
 
-void main(List<String> arguments) {
-  const runner = ElmixCommandRunner();
-  stdout.writeln(runner.usage());
+Future<void> main(List<String> args) async {
+  final exitCode = await ElmixCommandRunner().run(args);
+  await Future.wait<void>([stdout.close(), stderr.close()]);
+  exit(exitCode);
 }
