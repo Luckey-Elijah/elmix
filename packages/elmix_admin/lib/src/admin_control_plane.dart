@@ -42,19 +42,19 @@ class AdminControlPlane {
         name: '_admins',
         fields: <SchemaField>[
           SchemaField.recordIdentifier(),
-          SchemaField(name: 'email', type: FieldType.email, required: true),
+          SchemaField(name: 'email', type: .email, required: true),
           SchemaField(
             name: 'passwordHash',
-            type: FieldType.password,
+            type: .password,
             required: true,
           ),
         ],
         accessRules: <CollectionOperation, AccessRule>{
-          CollectionOperation.list: AccessRule('false'),
-          CollectionOperation.view: AccessRule('false'),
-          CollectionOperation.create: AccessRule('false'),
-          CollectionOperation.update: AccessRule('false'),
-          CollectionOperation.delete: AccessRule('false'),
+          .list: AccessRule('false'),
+          .view: AccessRule('false'),
+          .create: AccessRule('false'),
+          .update: AccessRule('false'),
+          .delete: AccessRule('false'),
         },
       ),
     );

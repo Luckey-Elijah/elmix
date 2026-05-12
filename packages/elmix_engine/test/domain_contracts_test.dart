@@ -138,8 +138,8 @@ void main() {
       final hook = RecordingActionHook();
       const context = ActionHookContext(
         collection: 'posts',
-        operation: CollectionOperation.create,
-        phase: HookPhase.before,
+        operation: .create,
+        phase: .before,
       );
 
       await hook(context);

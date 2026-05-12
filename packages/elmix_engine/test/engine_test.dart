@@ -8,9 +8,7 @@ void main() {
       final engine = ElmixEngine(storage: storage);
       const schema = CollectionSchema(
         name: 'posts',
-        fields: [
-          SchemaField(name: 'title', type: FieldType.text, required: true),
-        ],
+        fields: [SchemaField(name: 'title', type: .text, required: true)],
         accessRules: {},
       );
 
@@ -25,16 +23,12 @@ void main() {
       final engine = ElmixEngine(storage: storage);
       const original = CollectionSchema(
         name: 'posts',
-        fields: [
-          SchemaField(name: 'title', type: FieldType.text),
-        ],
+        fields: [SchemaField(name: 'title', type: .text)],
         accessRules: {},
       );
       const replacement = CollectionSchema(
         name: 'posts',
-        fields: [
-          SchemaField(name: 'body', type: FieldType.text),
-        ],
+        fields: [SchemaField(name: 'body', type: .text)],
         accessRules: {},
       );
 
@@ -59,7 +53,7 @@ void main() {
           name: 'posts',
           fields: [
             ...CollectionSchema.defaultFields(),
-            const SchemaField(name: 'title', type: FieldType.text),
+            const SchemaField(name: 'title', type: .text),
           ],
           accessRules: const {},
         );
@@ -76,7 +70,7 @@ void main() {
         const schemaWithoutDefaults = CollectionSchema(
           name: 'notes',
           fields: [
-            SchemaField(name: 'body', type: FieldType.text),
+            SchemaField(name: 'body', type: .text),
           ],
           accessRules: {},
         );
@@ -101,9 +95,7 @@ void main() {
         expect(
           (await engine
                   .collection('notes')
-                  .get(
-                    const RecordIdentifier('note-1'),
-                  ))
+                  .get(const RecordIdentifier('note-1')))
               ?.data,
           {'body': 'No timestamps required.'},
         );
@@ -121,20 +113,16 @@ void main() {
         await engine.registerCollection(
           const CollectionSchema.auth(
             name: 'members',
-            fields: [
-              SchemaField(name: 'email', type: FieldType.email),
-            ],
+            fields: [SchemaField(name: 'email', type: .email)],
             accessRules: {},
           ),
         );
         await engine.registerCollection(
           const CollectionSchema(
             name: 'posts',
-            fields: [
-              SchemaField(name: 'title', type: FieldType.text),
-            ],
+            fields: [SchemaField(name: 'title', type: .text)],
             accessRules: {
-              CollectionOperation.list: AccessRule(
+              .list: AccessRule(
                 'auth.collection == "members" && auth.id == "member-1"',
               ),
             },
@@ -177,19 +165,19 @@ void main() {
           const CollectionSchema(
             name: 'posts',
             fields: [
-              SchemaField(name: 'title', type: FieldType.text),
-              SchemaField(name: 'views', type: FieldType.number),
+              SchemaField(name: 'title', type: .text),
+              SchemaField(name: 'views', type: .number),
             ],
             accessRules: {
-              CollectionOperation.list: AccessRule('true'),
-              CollectionOperation.view: AccessRule('record.id == "post-1"'),
-              CollectionOperation.create: AccessRule(
+              .list: AccessRule('true'),
+              .view: AccessRule('record.id == "post-1"'),
+              .create: AccessRule(
                 'request.data.title == "Allowed"',
               ),
-              CollectionOperation.update: AccessRule(
+              .update: AccessRule(
                 'record.data.views >= 10 && auth.id != ""',
               ),
-              CollectionOperation.delete: AccessRule(
+              .delete: AccessRule(
                 'auth.collection == "members" && '
                 'record.data.title != "Protected"',
               ),
@@ -259,11 +247,11 @@ void main() {
         const CollectionSchema(
           name: 'posts',
           fields: [
-            SchemaField(name: 'title', type: FieldType.text),
+            SchemaField(name: 'title', type: .text),
           ],
           accessRules: {
-            CollectionOperation.create: AccessRule('false'),
-            CollectionOperation.update: AccessRule('true'),
+            .create: AccessRule('false'),
+            .update: AccessRule('true'),
           },
         ),
       );
@@ -297,12 +285,12 @@ void main() {
         const CollectionSchema(
           name: 'posts',
           fields: [
-            SchemaField(name: 'owner', type: FieldType.text),
-            SchemaField(name: 'title', type: FieldType.text),
+            SchemaField(name: 'owner', type: .text),
+            SchemaField(name: 'title', type: .text),
           ],
           accessRules: {
-            CollectionOperation.create: AccessRule('true'),
-            CollectionOperation.update: AccessRule(
+            .create: AccessRule('true'),
+            .update: AccessRule(
               'record.data.owner == auth.id',
             ),
           },
@@ -353,10 +341,10 @@ void main() {
           const CollectionSchema(
             name: 'posts',
             fields: [
-              SchemaField(name: 'title', type: FieldType.text),
+              SchemaField(name: 'title', type: .text),
             ],
             accessRules: {
-              CollectionOperation.create: AccessRule('auth.id == "member-1"'),
+              .create: AccessRule('auth.id == "member-1"'),
             },
           ),
         );
@@ -390,10 +378,10 @@ void main() {
               context.authRecord?.id.value,
             ),
           ),
-          [
+          <(String, CollectionOperation, HookPhase, String, String, String)>[
             (
               'posts',
-              CollectionOperation.create,
+              .create,
               HookPhase.before,
               'post-1',
               'members',
@@ -401,7 +389,7 @@ void main() {
             ),
             (
               'posts',
-              CollectionOperation.create,
+              .create,
               HookPhase.after,
               'post-1',
               'members',
@@ -423,14 +411,14 @@ void main() {
           const CollectionSchema(
             name: 'posts',
             fields: [
-              SchemaField(name: 'title', type: FieldType.text),
+              SchemaField(name: 'title', type: .text),
             ],
             accessRules: {
-              CollectionOperation.list: AccessRule('true'),
-              CollectionOperation.view: AccessRule('true'),
-              CollectionOperation.create: AccessRule('true'),
-              CollectionOperation.update: AccessRule('true'),
-              CollectionOperation.delete: AccessRule('true'),
+              .list: AccessRule('true'),
+              .view: AccessRule('true'),
+              .create: AccessRule('true'),
+              .update: AccessRule('true'),
+              .delete: AccessRule('true'),
             },
           ),
         );
@@ -462,57 +450,17 @@ void main() {
               context.record?.id.value,
             ),
           ),
-          [
-            (
-              CollectionOperation.create,
-              HookPhase.before,
-              'post-1',
-            ),
-            (
-              CollectionOperation.create,
-              HookPhase.after,
-              'post-1',
-            ),
-            (
-              CollectionOperation.view,
-              HookPhase.before,
-              'post-1',
-            ),
-            (
-              CollectionOperation.view,
-              HookPhase.after,
-              'post-1',
-            ),
-            (
-              CollectionOperation.update,
-              HookPhase.before,
-              'post-1',
-            ),
-            (
-              CollectionOperation.update,
-              HookPhase.after,
-              'post-1',
-            ),
-            (
-              CollectionOperation.list,
-              HookPhase.before,
-              null,
-            ),
-            (
-              CollectionOperation.list,
-              HookPhase.after,
-              null,
-            ),
-            (
-              CollectionOperation.delete,
-              HookPhase.before,
-              'post-1',
-            ),
-            (
-              CollectionOperation.delete,
-              HookPhase.after,
-              'post-1',
-            ),
+          <(CollectionOperation, HookPhase, String?)>[
+            (.create, .before, 'post-1'),
+            (.create, .after, 'post-1'),
+            (.view, .before, 'post-1'),
+            (.view, .after, 'post-1'),
+            (.update, .before, 'post-1'),
+            (.update, .after, 'post-1'),
+            (.list, .before, null),
+            (.list, .after, null),
+            (.delete, .before, 'post-1'),
+            (.delete, .after, 'post-1'),
           ],
         );
       },
@@ -527,9 +475,9 @@ void main() {
           const CollectionSchema(
             name: 'posts',
             fields: [
-              SchemaField(name: 'title', type: FieldType.text),
-              SchemaField(name: 'published', type: FieldType.bool),
-              SchemaField(name: 'views', type: FieldType.number),
+              SchemaField(name: 'title', type: .text),
+              SchemaField(name: 'published', type: .bool),
+              SchemaField(name: 'views', type: .number),
             ],
             accessRules: {},
           ),
@@ -595,7 +543,7 @@ void main() {
           const CollectionSchema(
             name: 'posts',
             fields: [
-              SchemaField(name: 'author', type: FieldType.relation),
+              SchemaField(name: 'author', type: .relation),
             ],
             accessRules: {},
           ),
@@ -628,7 +576,7 @@ void main() {
 
       final authRecord = await engine.runAuthenticationAction(
         collection: 'members',
-        action: AuthenticationOperation.authenticate,
+        action: .authenticate,
         run: () async => const AuthRecordIdentity(
           collection: 'members',
           id: RecordIdentifier('member-1'),
@@ -645,19 +593,9 @@ void main() {
             context.authRecord?.id.value,
           ),
         ),
-        [
-          (
-            'members',
-            AuthenticationOperation.authenticate,
-            HookPhase.before,
-            null,
-          ),
-          (
-            'members',
-            AuthenticationOperation.authenticate,
-            HookPhase.after,
-            'member-1',
-          ),
+        <(String, AuthenticationOperation, HookPhase, String?)>[
+          ('members', .authenticate, HookPhase.before, null),
+          ('members', .authenticate, HookPhase.after, 'member-1'),
         ],
       );
     });
@@ -668,7 +606,7 @@ void main() {
       const schema = CollectionSchema(
         name: 'posts',
         fields: [
-          SchemaField(name: 'title', type: FieldType.text, required: true),
+          SchemaField(name: 'title', type: .text, required: true),
         ],
         accessRules: {},
       );
@@ -716,7 +654,7 @@ void main() {
         const schema = CollectionSchema(
           name: 'posts',
           fields: [
-            SchemaField(name: 'title', type: FieldType.text),
+            SchemaField(name: 'title', type: .text),
           ],
           accessRules: {},
         );
@@ -755,7 +693,7 @@ void main() {
       const schema = CollectionSchema(
         name: 'posts',
         fields: [
-          SchemaField(name: 'title', type: FieldType.text),
+          SchemaField(name: 'title', type: .text),
         ],
         accessRules: {},
       );
@@ -789,19 +727,19 @@ void main() {
           const CollectionSchema(
             name: 'profiles',
             fields: [
-              SchemaField(name: 'name', type: FieldType.text, required: true),
-              SchemaField(name: 'age', type: FieldType.number),
-              SchemaField(name: 'verified', type: FieldType.bool),
-              SchemaField(name: 'birthday', type: FieldType.date),
-              SchemaField(name: 'email', type: FieldType.email),
-              SchemaField(name: 'secret', type: FieldType.password),
-              SchemaField(name: 'role', type: FieldType.select),
+              SchemaField(name: 'name', type: .text, required: true),
+              SchemaField(name: 'age', type: .number),
+              SchemaField(name: 'verified', type: .bool),
+              SchemaField(name: 'birthday', type: .date),
+              SchemaField(name: 'email', type: .email),
+              SchemaField(name: 'secret', type: .password),
+              SchemaField(name: 'role', type: .select),
               SchemaField(
                 name: 'organization',
-                type: FieldType.relation,
+                type: .relation,
                 targetCollection: 'organizations',
               ),
-              SchemaField(name: 'settings', type: FieldType.json),
+              SchemaField(name: 'settings', type: .json),
             ],
             accessRules: {},
           ),
@@ -853,7 +791,7 @@ void main() {
         const CollectionSchema(
           name: 'posts',
           fields: [
-            SchemaField(name: 'title', type: FieldType.text),
+            SchemaField(name: 'title', type: .text),
           ],
           accessRules: {},
         ),
@@ -884,7 +822,7 @@ void main() {
         const CollectionSchema(
           name: 'posts',
           fields: [
-            SchemaField(name: 'title', type: FieldType.text),
+            SchemaField(name: 'title', type: .text),
           ],
           accessRules: {},
         ),
@@ -912,7 +850,7 @@ void main() {
         const CollectionSchema(
           name: 'posts',
           fields: [
-            SchemaField(name: 'title', type: FieldType.text),
+            SchemaField(name: 'title', type: .text),
           ],
           accessRules: {},
         ),

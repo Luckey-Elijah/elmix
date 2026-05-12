@@ -69,11 +69,11 @@ void main() {
             ),
           ],
           accessRules: <CollectionOperation, AccessRule>{
-            CollectionOperation.list: AccessRule('false'),
-            CollectionOperation.view: AccessRule('false'),
-            CollectionOperation.create: AccessRule('false'),
-            CollectionOperation.update: AccessRule('false'),
-            CollectionOperation.delete: AccessRule('false'),
+            .list: AccessRule('false'),
+            .view: AccessRule('false'),
+            .create: AccessRule('false'),
+            .update: AccessRule('false'),
+            .delete: AccessRule('false'),
           },
         ),
       );
@@ -301,7 +301,7 @@ void main() {
               SchemaField(name: 'title', type: FieldType.text, required: true),
             ],
             accessRules: <CollectionOperation, AccessRule>{
-              CollectionOperation.list: AccessRule('auth.id == "member_1"'),
+              .list: AccessRule('auth.id == "member_1"'),
             },
           ),
         );

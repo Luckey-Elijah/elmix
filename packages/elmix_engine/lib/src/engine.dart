@@ -87,13 +87,13 @@ class ElmixEngine {
     await _runAuthenticationHooks(
       collection: collection,
       action: action,
-      phase: HookPhase.before,
+      phase: .before,
     );
     final authRecord = await run();
     await _runAuthenticationHooks(
       collection: collection,
       action: action,
-      phase: HookPhase.after,
+      phase: .after,
       authRecord: authRecord,
     );
     return authRecord;
@@ -141,12 +141,12 @@ class CollectionHandle {
     final schema = await _requireSchema();
     _authorize(
       schema: schema,
-      operation: CollectionOperation.create,
+      operation: .create,
       requestRecord: record,
     );
     await _runHooks(
-      operation: CollectionOperation.create,
-      phase: HookPhase.before,
+      operation: .create,
+      phase: .before,
       record: record,
     );
     await _validateRecord(record, schema: schema, requireIdentifier: false);
@@ -164,8 +164,8 @@ class CollectionHandle {
 
     final created = await _storage.putRecord(record);
     await _runHooks(
-      operation: CollectionOperation.create,
-      phase: HookPhase.after,
+      operation: .create,
+      phase: .after,
       record: created,
     );
     return created;
@@ -189,13 +189,13 @@ class CollectionHandle {
     );
     await _runHooks(
       operation: operation,
-      phase: HookPhase.before,
+      phase: .before,
       record: record,
     );
     final saved = await _storage.putRecord(record);
     await _runHooks(
       operation: operation,
-      phase: HookPhase.after,
+      phase: .after,
       record: saved,
     );
     return saved;
@@ -207,17 +207,17 @@ class CollectionHandle {
     final record = await _storage.getRecord(collection: name, id: id);
     _authorize(
       schema: schema,
-      operation: CollectionOperation.view,
+      operation: .view,
       record: record,
     );
     await _runHooks(
-      operation: CollectionOperation.view,
-      phase: HookPhase.before,
+      operation: .view,
+      phase: .before,
       record: record,
     );
     await _runHooks(
-      operation: CollectionOperation.view,
-      phase: HookPhase.after,
+      operation: .view,
+      phase: .after,
       record: record,
     );
     return record;
@@ -236,19 +236,19 @@ class CollectionHandle {
 
     _authorize(
       schema: schema,
-      operation: CollectionOperation.update,
+      operation: .update,
       record: existing,
       requestRecord: record,
     );
     await _runHooks(
-      operation: CollectionOperation.update,
-      phase: HookPhase.before,
+      operation: .update,
+      phase: .before,
       record: record,
     );
     final updated = await _storage.putRecord(record);
     await _runHooks(
-      operation: CollectionOperation.update,
-      phase: HookPhase.after,
+      operation: .update,
+      phase: .after,
       record: updated,
     );
     return updated;
@@ -259,16 +259,16 @@ class CollectionHandle {
     QueryExpression query = const QueryExpression(),
   }) async {
     final schema = await _requireSchema();
-    _authorize(schema: schema, operation: CollectionOperation.list);
+    _authorize(schema: schema, operation: .list);
     _validateQuery(query, schema: schema);
     await _runHooks(
-      operation: CollectionOperation.list,
-      phase: HookPhase.before,
+      operation: .list,
+      phase: .before,
     );
     final page = await _storage.listRecords(collection: name, query: query);
     await _runHooks(
-      operation: CollectionOperation.list,
-      phase: HookPhase.after,
+      operation: .list,
+      phase: .after,
     );
     return page;
   }
@@ -279,18 +279,18 @@ class CollectionHandle {
     final record = await _storage.getRecord(collection: name, id: id);
     _authorize(
       schema: schema,
-      operation: CollectionOperation.delete,
+      operation: .delete,
       record: record,
     );
     await _runHooks(
-      operation: CollectionOperation.delete,
-      phase: HookPhase.before,
+      operation: .delete,
+      phase: .before,
       record: record,
     );
     await _storage.deleteRecord(collection: name, id: id);
     await _runHooks(
-      operation: CollectionOperation.delete,
-      phase: HookPhase.after,
+      operation: .delete,
+      phase: .after,
       record: record,
     );
   }
