@@ -398,7 +398,7 @@ class CollectionHandle {
     }
 
     final dataFields = schema.fields
-        .where((field) => field.systemRole != FieldSystemRole.recordIdentifier)
+        .where((field) => field.systemRole != .recordIdentifier)
         .toList();
     final dataFieldNames = dataFields.map((field) => field.name).toSet();
 
@@ -411,7 +411,7 @@ class CollectionHandle {
     }
 
     for (final field in dataFields) {
-      if (field.systemRole == FieldSystemRole.recordIdentifier) {
+      if (field.systemRole == .recordIdentifier) {
         continue;
       }
 

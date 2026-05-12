@@ -509,20 +509,14 @@ void main() {
         final page = await posts.list(
           query: const QueryExpression(
             filters: [
-              QueryFilter(
-                field: 'published',
-                operator: QueryOperator.equals,
-                value: true,
-              ),
+              QueryFilter(field: 'published', operator: .equals, value: true),
               QueryFilter(
                 field: 'views',
-                operator: QueryOperator.greaterThanOrEquals,
+                operator: .greaterThanOrEquals,
                 value: 10,
               ),
             ],
-            sort: [
-              QuerySort(field: 'views', direction: SortDirection.descending),
-            ],
+            sort: [QuerySort(field: 'views', direction: .descending)],
             pagination: QueryPagination(page: 2, perPage: 1),
           ),
         );
@@ -557,7 +551,7 @@ void main() {
                   filters: [
                     QueryFilter(
                       field: 'author.name',
-                      operator: QueryOperator.equals,
+                      operator: .equals,
                       value: 'Ada',
                     ),
                   ],
@@ -972,12 +966,12 @@ class InMemoryStorageAdapter implements StorageAdapter {
         : record.data[filter.field];
     final comparison = _compareValues(value, filter.value);
     return switch (filter.operator) {
-      QueryOperator.equals => value == filter.value,
-      QueryOperator.notEquals => value != filter.value,
-      QueryOperator.greaterThan => comparison > 0,
-      QueryOperator.greaterThanOrEquals => comparison >= 0,
-      QueryOperator.lessThan => comparison < 0,
-      QueryOperator.lessThanOrEquals => comparison <= 0,
+      .equals => value == filter.value,
+      .notEquals => value != filter.value,
+      .greaterThan => comparison > 0,
+      .greaterThanOrEquals => comparison >= 0,
+      .lessThan => comparison < 0,
+      .lessThanOrEquals => comparison <= 0,
     };
   }
 
@@ -995,9 +989,7 @@ class InMemoryStorageAdapter implements StorageAdapter {
           : right.data[instruction.field];
       final comparison = _compareValues(leftValue, rightValue);
       if (comparison != 0) {
-        return instruction.direction == SortDirection.ascending
-            ? comparison
-            : -comparison;
+        return instruction.direction == .ascending ? comparison : -comparison;
       }
     }
     return 0;

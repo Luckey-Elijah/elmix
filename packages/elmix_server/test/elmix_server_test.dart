@@ -14,7 +14,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -61,10 +61,10 @@ void main() {
           name: '_admins',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'email', type: FieldType.email, required: true),
+            SchemaField(name: 'email', type: .email, required: true),
             SchemaField(
               name: 'passwordHash',
-              type: FieldType.password,
+              type: .password,
               required: true,
             ),
           ],
@@ -111,8 +111,8 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -199,9 +199,9 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'body', type: FieldType.text, required: true),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'body', type: .text, required: true),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -251,7 +251,7 @@ void main() {
           name: 'events',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'startsAt', type: FieldType.date, required: true),
+            SchemaField(name: 'startsAt', type: .date, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -298,7 +298,7 @@ void main() {
             name: 'posts',
             fields: <SchemaField>[
               SchemaField.recordIdentifier(),
-              SchemaField(name: 'title', type: FieldType.text, required: true),
+              SchemaField(name: 'title', type: .text, required: true),
             ],
             accessRules: <CollectionOperation, AccessRule>{
               .list: AccessRule('auth.id == "member_1"'),
@@ -431,7 +431,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),

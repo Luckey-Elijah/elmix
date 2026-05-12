@@ -500,9 +500,7 @@ SchemaField _fieldFromJson(Object? body) {
     type: _fieldType(object['type']! as String),
     required: object['required'] == true,
     removable: removable is! bool || removable,
-    systemRole: systemRole is String
-        ? _fieldSystemRole(systemRole)
-        : FieldSystemRole.none,
+    systemRole: systemRole is String ? _fieldSystemRole(systemRole) : .none,
     targetCollection: object['targetCollection'] as String?,
   );
 }
