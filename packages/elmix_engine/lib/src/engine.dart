@@ -361,6 +361,10 @@ class CollectionHandle {
     Record? record,
     Record? requestRecord,
   }) {
+    if (_context.isSystem) {
+      return;
+    }
+
     final rule = schema.accessRules[operation];
     if (rule == null || rule.expression.trim().isEmpty) {
       return;

@@ -125,10 +125,65 @@ void main() {
       final schema = await engine.getCollectionSchema('_admins');
       expect(schema?.isAuthCollection, true);
       final admin = await engine
-          .collection('_admins')
+          .collection('_admins', context: RequestContext.system)
           .get(const RecordIdentifier('admin@example.com'));
       expect(admin?.data['email'], 'admin@example.com');
       expect(admin?.data['passwordHash'], isNot('secret-password'));
+      expect(admin?.data['passwordHash'], startsWith(r'pbkdf2-sha256$'));
+      await expectLater(
+        engine
+            .collection('_admins')
+            .get(const RecordIdentifier('admin@example.com')),
+        throwsA(isA<AuthorizationException>()),
+      );
+    });
+
+    test('stores salted password hashes for Admin Accounts', () async {
+      final directory = Directory.systemTemp.createTempSync(
+        'elmix_cli_admin_hash_test_',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final databasePath = '${directory.path}/elmix.db';
+      final runner = ElmixCommandRunner(workingDirectory: directory);
+
+      await runner.runWithResult(<String>[
+        'admin',
+        'create',
+        '--db',
+        databasePath,
+        '--email',
+        'first@example.com',
+        '--password',
+        'same-password',
+      ]);
+      await runner.runWithResult(<String>[
+        'admin',
+        'create',
+        '--db',
+        databasePath,
+        '--email',
+        'second@example.com',
+        '--password',
+        'same-password',
+      ]);
+
+      final storage = SqliteStorageAdapter.open(databasePath);
+      addTearDown(storage.close);
+      final engine = ElmixEngine(storage: storage);
+      final admins = engine.collection(
+        '_admins',
+        context: RequestContext.system,
+      );
+      final first = await admins.get(
+        const RecordIdentifier('first@example.com'),
+      );
+      final second = await admins.get(
+        const RecordIdentifier('second@example.com'),
+      );
+
+      expect(first?.data['passwordHash'], startsWith(r'pbkdf2-sha256$'));
+      expect(second?.data['passwordHash'], startsWith(r'pbkdf2-sha256$'));
+      expect(first?.data['passwordHash'], isNot(second?.data['passwordHash']));
     });
   });
 

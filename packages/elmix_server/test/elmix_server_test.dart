@@ -51,6 +51,56 @@ void main() {
       });
     });
 
+    test('does not expose built-in Admin Account records publicly', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema.auth(
+          name: '_admins',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'email', type: FieldType.email, required: true),
+            SchemaField(
+              name: 'passwordHash',
+              type: FieldType.password,
+              required: true,
+            ),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{
+            CollectionOperation.list: AccessRule('false'),
+            CollectionOperation.view: AccessRule('false'),
+            CollectionOperation.create: AccessRule('false'),
+            CollectionOperation.update: AccessRule('false'),
+            CollectionOperation.delete: AccessRule('false'),
+          },
+        ),
+      );
+      await engine
+          .collection('_admins', context: RequestContext.system)
+          .create(
+            const AuthRecord(
+              collection: '_admins',
+              id: RecordIdentifier('admin@example.com'),
+              data: <String, Object?>{
+                'email': 'admin@example.com',
+                'passwordHash': 'stored-password-hash',
+              },
+            ),
+          );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: 'GET',
+          path: '/api/collections/_admins/records',
+        ),
+      );
+
+      expect(response.statusCode, 403);
+      expect(response.body.toString(), isNot(contains('stored-password-hash')));
+    });
+
     test('creates, views, updates, and deletes collection records', () async {
       final storage = MemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);

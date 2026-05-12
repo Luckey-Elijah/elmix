@@ -33,15 +33,11 @@ class ElmixCommandRunner {
   }) : _workingDirectory = workingDirectory ?? Directory.current,
        _logger = logger ?? Logger(),
        _output = StringBuffer() {
-    _runner =
-        args.CommandRunner<int>(
-            'elmix',
-            'Elmix Core v0 CLI.',
-          )
-          ..addCommand(_CreateCommand(this))
-          ..addCommand(_AdminCommand(this))
-          ..addCommand(_SchemaCommand(this))
-          ..addCommand(_ServeCommand(this));
+    _runner = args.CommandRunner<int>('elmix', 'Elmix Core v0 CLI.')
+      ..addCommand(_CreateCommand(this))
+      ..addCommand(_AdminCommand(this))
+      ..addCommand(_SchemaCommand(this))
+      ..addCommand(_ServeCommand(this));
   }
 
   final Directory _workingDirectory;
