@@ -78,6 +78,60 @@ class ElmixEngine {
     _authenticationHooks.add(hook);
   }
 
+  /// Authenticates an Auth Record by email and password.
+  Future<AuthRecord> authenticateAuthRecordWithPassword({
+    required String collection,
+    required String email,
+    required String password,
+  }) async {
+    final schema = await _storage.getCollectionSchema(collection);
+    if (schema == null || !schema.isAuthCollection) {
+      throw CollectionSchemaException(
+        'Collection "$collection" is not an Auth Collection.',
+      );
+    }
+
+    final page = await _storage.listRecords(
+      collection: collection,
+      query: QueryExpression(
+        filters: <QueryFilter>[
+          QueryFilter(
+            field: 'email',
+            operator: QueryOperator.equals,
+            value: email,
+          ),
+        ],
+        pagination: const QueryPagination(perPage: 1000),
+      ),
+    );
+    final matching = page.items.where(
+      (record) => AuthPassword.verify(
+        password: password,
+        stored: record.data['password'],
+      ),
+    );
+    if (matching.isEmpty) {
+      throw const AuthRecordAuthenticationException(
+        'Auth Record credentials are invalid.',
+      );
+    }
+
+    final record = matching.first;
+    final identity = await runAuthenticationAction(
+      collection: collection,
+      action: AuthenticationOperation.authenticate,
+      run: () async => AuthRecordIdentity(
+        collection: collection,
+        id: record.id,
+      ),
+    );
+    return AuthRecord(
+      collection: identity.collection,
+      id: identity.id,
+      data: record.data,
+    );
+  }
+
   /// Runs an authentication [action] with before and after lifecycle hooks.
   Future<AuthRecordIdentity> runAuthenticationAction({
     required String collection,
@@ -150,6 +204,7 @@ class CollectionHandle {
       record: record,
     );
     await _validateRecord(record, schema: schema, requireIdentifier: false);
+    final recordToStore = _recordWithHashedPasswords(record, schema: schema);
     if (record.id.value.trim().isNotEmpty) {
       final existing = await _storage.getRecord(
         collection: name,
@@ -162,7 +217,7 @@ class CollectionHandle {
       }
     }
 
-    final created = await _storage.putRecord(record);
+    final created = await _storage.putRecord(recordToStore);
     await _runHooks(
       operation: CollectionOperation.create,
       phase: HookPhase.after,
@@ -192,7 +247,9 @@ class CollectionHandle {
       phase: HookPhase.before,
       record: record,
     );
-    final saved = await _storage.putRecord(record);
+    final saved = await _storage.putRecord(
+      _recordWithHashedPasswords(record, schema: schema),
+    );
     await _runHooks(
       operation: operation,
       phase: HookPhase.after,
@@ -245,7 +302,9 @@ class CollectionHandle {
       phase: HookPhase.before,
       record: record,
     );
-    final updated = await _storage.putRecord(record);
+    final updated = await _storage.putRecord(
+      _recordWithHashedPasswords(record, schema: schema),
+    );
     await _runHooks(
       operation: CollectionOperation.update,
       phase: HookPhase.after,
@@ -427,6 +486,32 @@ class CollectionHandle {
         );
       }
     }
+  }
+
+  Record _recordWithHashedPasswords(
+    Record record, {
+    required CollectionSchema schema,
+  }) {
+    final passwordFields = <String>{
+      for (final field in schema.fields)
+        if (field.type == FieldType.password) field.name,
+    };
+    if (passwordFields.isEmpty) {
+      return record;
+    }
+
+    return Record(
+      collection: record.collection,
+      id: record.id,
+      data: <String, Object?>{
+        for (final entry in record.data.entries)
+          entry.key:
+              passwordFields.contains(entry.key) &&
+                  !AuthPassword.isHash(entry.value)
+              ? AuthPassword.hash(entry.value! as String)
+              : entry.value,
+      },
+    );
   }
 
   bool _isValidFieldValue(SchemaField field, Object value) {

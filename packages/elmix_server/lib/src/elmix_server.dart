@@ -6,10 +6,17 @@ import 'package:elmix_engine/elmix_engine.dart';
 /// details into the Engine.
 class ElmixServer {
   /// Creates a server boundary backed by [engine].
-  const ElmixServer(this.engine);
+  ElmixServer(
+    this.engine, {
+    List<ServerAdminAccount> adminAccounts = const <ServerAdminAccount>[],
+  }) : _adminAccounts = adminAccounts;
 
   /// The engine exposed through this server boundary.
   final ElmixEngine engine;
+
+  final List<ServerAdminAccount> _adminAccounts;
+  final _adminSessions = <String, AdminAccount>{};
+  final _authRecordSessions = <String, AuthRecordIdentity>{};
 
   /// Handles one HTTP-shaped Elmix request.
   Future<ElmixHttpResponse> handle(ElmixHttpRequest request) async {
@@ -43,89 +50,213 @@ class ElmixServer {
   }
 
   Future<ElmixHttpResponse> _handle(ElmixHttpRequest request) async {
-    final segments = request.pathSegments;
-    if (_matchesAdminCollectionsRoute(segments)) {
-      if (request.method == 'GET') {
+    if (request.pathSegments case ['api', ...final apiSegments]) {
+      if (apiSegments case ['admin', ...final adminSegments]) {
+        final response = await _handleAdmin(request, adminSegments);
+        if (response != null) return response;
+      }
+      if (apiSegments case ['collections', ...final collectionSegments]) {
+        final response = await _handleCollection(request, collectionSegments);
+        if (response != null) return response;
+      }
+    }
+
+    return _notFound();
+  }
+
+  Future<ElmixHttpResponse?> _handleCollection(
+    ElmixHttpRequest request,
+    List<String> collectionSegments,
+  ) async {
+    if (collectionSegments case [final collection, 'auth-with-password']) {
+      if (request.method == .post) {
+        return _authenticateAuthRecord(
+          collection: collection,
+          request: request,
+        );
+      }
+      return _notFound();
+    }
+
+    if (collectionSegments case [final collection, 'records']) {
+      return _handleRecordCollectionRoute(
+        request: request,
+        collection: collection,
+      );
+    }
+
+    if (collectionSegments case [final collection, 'records', final id]) {
+      return _handleRecordRoute(
+        request: request,
+        collection: collection,
+        id: RecordIdentifier(id),
+      );
+    }
+    return null;
+  }
+
+  Future<ElmixHttpResponse?> _handleAdmin(
+    ElmixHttpRequest request,
+    List<String> adminSegments,
+  ) async {
+    if (adminSegments case ['auth-with-password']) {
+      if (request.method == .post) return _authenticateAdmin(request);
+    }
+    if (adminSegments case ['collections']) {
+      final adminRequired = _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
+      if (request.method == .get) {
         final schemas = await engine.listCollections();
         return ElmixHttpResponse.ok(<String, Object?>{
           'items': schemas.map(_schemaToJson).toList(),
         });
       }
-      if (request.method == 'POST') {
+      if (request.method == .post) {
         final schema = _schemaFromJson(request.body);
         await engine.registerCollection(schema);
         return ElmixHttpResponse.created(_schemaToJson(schema));
       }
     }
 
-    if (_matchesAdminCollectionRoute(segments)) {
-      final collection = segments[3];
-      if (request.method == 'GET') {
+    if (adminSegments case ['collections', final collection]) {
+      final adminRequired = _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
+
+      if (request.method == .get) {
         final schema = await engine.getCollectionSchema(collection);
         if (schema == null) {
           return _notFound();
         }
         return ElmixHttpResponse.ok(_schemaToJson(schema));
       }
-      if (request.method == 'PUT' || request.method == 'PATCH') {
+      if (request.method == .put || request.method == .patch) {
         final schema = _schemaFromJson(request.body);
         await engine.updateCollectionSchema(schema);
         return ElmixHttpResponse.ok(_schemaToJson(schema));
       }
     }
 
-    if (_matchesAdminRecordsCollectionRoute(segments)) {
+    if (adminSegments case ['collections', final collection, 'records']) {
+      final adminRequired = _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
       return _handleRecordCollectionRoute(
         request: request,
-        collection: segments[3],
+        collection: collection,
       );
     }
 
-    if (_matchesAdminRecordRoute(segments)) {
+    if (adminSegments case [
+      'collections',
+      final collection,
+      'records',
+      final id,
+    ]) {
+      final adminRequired = _requireAdminSession(request);
+      if (adminRequired != null) return adminRequired;
       return _handleRecordRoute(
         request: request,
-        collection: segments[3],
-        id: RecordIdentifier(segments[5]),
+        collection: collection,
+        id: RecordIdentifier(id),
+      );
+    }
+    return null;
+  }
+
+  ElmixHttpResponse _authenticateAdmin(ElmixHttpRequest request) {
+    final object = request.body is Map<String, Object?>
+        ? request.body! as Map<String, Object?>
+        : const <String, Object?>{};
+    final email = object['email'];
+    final password = object['password'];
+    final account = _adminAccounts.where(
+      (candidate) => candidate.email == email && candidate.password == password,
+    );
+    if (account.isEmpty) {
+      return _error(
+        statusCode: 401,
+        code: 'invalid_credentials',
+        message: 'Admin Account credentials are invalid.',
       );
     }
 
-    if (_matchesRecordsCollectionRoute(segments)) {
-      return _handleRecordCollectionRoute(
-        request: request,
-        collection: segments[2],
+    final admin = AdminAccount(
+      id: account.first.id,
+      email: account.first.email,
+    );
+    final token = 'admin:${admin.id.value}';
+    _adminSessions[token] = admin;
+    return ElmixHttpResponse.ok(<String, Object?>{
+      'token': token,
+      'admin': <String, Object?>{
+        'id': admin.id.value,
+        'email': admin.email,
+      },
+    });
+  }
+
+  Future<ElmixHttpResponse> _authenticateAuthRecord({
+    required String collection,
+    required ElmixHttpRequest request,
+  }) async {
+    final object = request.body is Map<String, Object?>
+        ? request.body! as Map<String, Object?>
+        : const <String, Object?>{};
+    final email = object['email'] is String ? object['email']! as String : '';
+    final password = object['password'] is String
+        ? object['password']! as String
+        : '';
+
+    late final AuthRecord record;
+    try {
+      record = await engine.authenticateAuthRecordWithPassword(
+        collection: collection,
+        email: email,
+        password: password,
       );
+    } on AuthRecordAuthenticationException catch (error) {
+      return _error(
+        statusCode: 401,
+        code: 'invalid_credentials',
+        message: error.message,
+      );
+    } on CollectionSchemaException {
+      return _notFound();
     }
 
-    if (_matchesRecordRoute(segments)) {
-      return _handleRecordRoute(
-        request: request,
-        collection: segments[2],
-        id: RecordIdentifier(segments[4]),
-      );
-    }
-
-    return _notFound();
+    final token = 'record-session:${record.collection}:${record.id.value}';
+    _authRecordSessions[token] = AuthRecordIdentity(
+      collection: record.collection,
+      id: record.id,
+    );
+    return ElmixHttpResponse.ok(<String, Object?>{
+      'token': token,
+      'record': _recordToJson(record, includePasswordFields: false),
+    });
   }
 
   Future<ElmixHttpResponse> _handleRecordCollectionRoute({
     required ElmixHttpRequest request,
     required String collection,
   }) async {
-    if (request.method == 'GET') {
+    if (request.method == .get) {
       final page = await engine
-          .collection(
-            collection,
-            context: request.context,
-          )
+          .collection(collection, context: _contextForRequest(request))
           .list();
+
       return ElmixHttpResponse.ok(_recordPageToJson(page));
     }
-    if (request.method == 'POST') {
+    if (request.method == .post) {
       final schema = await engine.getCollectionSchema(collection);
       final created = await engine
           .collection(
             collection,
-            context: request.context,
+            context: _contextForRequest(request),
           )
           .create(
             _recordFromJson(
@@ -144,15 +275,18 @@ class ElmixServer {
     required String collection,
     required RecordIdentifier id,
   }) async {
-    final records = engine.collection(collection, context: request.context);
-    if (request.method == 'GET') {
+    final records = engine.collection(
+      collection,
+      context: _contextForRequest(request),
+    );
+    if (request.method == .get) {
       final record = await records.get(id);
       if (record == null) {
         return _notFound();
       }
       return ElmixHttpResponse.ok(_recordToJson(record));
     }
-    if (request.method == 'PATCH') {
+    if (request.method == .patch) {
       final existing = await records.get(id);
       if (existing == null) {
         return _notFound();
@@ -169,7 +303,7 @@ class ElmixServer {
       );
       return ElmixHttpResponse.ok(_recordToJson(updated));
     }
-    if (request.method == 'PUT') {
+    if (request.method == .put) {
       final schema = await engine.getCollectionSchema(collection);
       final updated = await records.update(
         _recordFromJson(
@@ -181,11 +315,43 @@ class ElmixServer {
       );
       return ElmixHttpResponse.ok(_recordToJson(updated));
     }
-    if (request.method == 'DELETE') {
+    if (request.method == .delete) {
       await records.delete(id);
       return const ElmixHttpResponse(statusCode: 204);
     }
     return _notFound();
+  }
+
+  ElmixHttpResponse? _requireAdminSession(ElmixHttpRequest request) {
+    if (_adminAccounts.isEmpty || _adminFromBearer(request) != null) {
+      return null;
+    }
+    return _error(
+      statusCode: 401,
+      code: 'admin_session_required',
+      message: 'An Admin Account session is required.',
+    );
+  }
+
+  AdminAccount? _adminFromBearer(ElmixHttpRequest request) {
+    final token = request.bearerToken;
+    if (token == null) {
+      return null;
+    }
+    return _adminSessions[token];
+  }
+
+  RequestContext _contextForRequest(ElmixHttpRequest request) {
+    final token = request.bearerToken;
+    if (token != null) {
+      final identity = _authRecordSessions[token];
+      if (identity != null) {
+        return RequestContext(authRecord: identity);
+      }
+      return RequestContext.anonymous;
+    }
+
+    return request.headerContext;
   }
 
   ElmixHttpResponse _error({
@@ -196,10 +362,7 @@ class ElmixServer {
     return ElmixHttpResponse(
       statusCode: statusCode,
       body: <String, Object?>{
-        'error': <String, Object?>{
-          'code': code,
-          'message': message,
-        },
+        'error': <String, Object?>{'code': code, 'message': message},
       },
     );
   }
@@ -216,50 +379,7 @@ class ElmixServer {
     );
   }
 
-  bool _matchesRecordsCollectionRoute(List<String> segments) {
-    return segments.length == 4 &&
-        segments[0] == 'api' &&
-        segments[1] == 'collections' &&
-        segments[3] == 'records';
-  }
-
-  bool _matchesRecordRoute(List<String> segments) {
-    return segments.length == 5 &&
-        segments[0] == 'api' &&
-        segments[1] == 'collections' &&
-        segments[3] == 'records';
-  }
-
-  bool _matchesAdminCollectionsRoute(List<String> segments) {
-    return segments.length == 3 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admin' &&
-        segments[2] == 'collections';
-  }
-
-  bool _matchesAdminCollectionRoute(List<String> segments) {
-    return segments.length == 4 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admin' &&
-        segments[2] == 'collections';
-  }
-
-  bool _matchesAdminRecordsCollectionRoute(List<String> segments) {
-    return segments.length == 5 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admin' &&
-        segments[2] == 'collections' &&
-        segments[4] == 'records';
-  }
-
-  bool _matchesAdminRecordRoute(List<String> segments) {
-    return segments.length == 6 &&
-        segments[0] == 'api' &&
-        segments[1] == 'admin' &&
-        segments[2] == 'collections' &&
-        segments[4] == 'records';
-  }
-
+  // TODO(elijah): move to RecordPage
   Map<String, Object?> _recordPageToJson(RecordPage page) {
     return <String, Object?>{
       'page': page.page,
@@ -269,11 +389,23 @@ class ElmixServer {
     };
   }
 
-  Map<String, Object?> _recordToJson(Record record) {
+  // TODO(elijah): make part of Record class..
+  // TODO(elijah): override in subclasses where needed
+  Map<String, Object?> _recordToJson(
+    Record record, {
+    bool includePasswordFields = true,
+  }) {
     return <String, Object?>{
       'collection': record.collection,
       'id': record.id.value,
-      'data': _jsonValue(record.data),
+      'data': _jsonValue(
+        includePasswordFields
+            ? record.data
+            : <String, Object?>{
+                for (final entry in record.data.entries)
+                  if (!AuthPassword.isHash(entry.value)) entry.key: entry.value,
+              },
+      ),
     };
   }
 
@@ -307,9 +439,7 @@ class ElmixServer {
     Map<String, Object?> data, {
     required CollectionSchema? schema,
   }) {
-    if (schema == null) {
-      return data;
-    }
+    if (schema == null) return data;
 
     final dateFields = <String>{
       for (final field in schema.fields)
@@ -324,9 +454,7 @@ class ElmixServer {
   }
 
   Object? _decodeDateField(String field, Object? value) {
-    if (value == null || value is DateTime) {
-      return value;
-    }
+    if (value == null || value is DateTime) return value;
     if (value is String) {
       try {
         return DateTime.parse(value);
@@ -339,17 +467,16 @@ class ElmixServer {
     return value;
   }
 
-  Object? _jsonValue(Object? value) {
-    return switch (value) {
-      final DateTime date => date.toUtc().toIso8601String(),
-      final Map<String, Object?> map => <String, Object?>{
-        for (final entry in map.entries) entry.key: _jsonValue(entry.value),
-      },
-      final List<Object?> list => list.map(_jsonValue).toList(),
-      _ => value,
-    };
-  }
+  Object? _jsonValue(Object? value) => switch (value) {
+    final DateTime date => date.toUtc().toIso8601String(),
+    final Map<String, Object?> map => <String, Object?>{
+      for (final entry in map.entries) entry.key: _jsonValue(entry.value),
+    },
+    final List<Object?> list => list.map(_jsonValue).toList(),
+    _ => value,
+  };
 
+  // TODO(elijah): move this to CollectionSchema
   Map<String, Object?> _schemaToJson(CollectionSchema schema) {
     return <String, Object?>{
       'name': schema.name,
@@ -362,6 +489,7 @@ class ElmixServer {
     };
   }
 
+  // TODO(elijah): move this to SchemaField
   Map<String, Object?> _fieldToJson(SchemaField field) {
     return <String, Object?>{
       'name': field.name,
@@ -374,6 +502,7 @@ class ElmixServer {
     };
   }
 
+  // TODO(elijah): move this to the CollectionSchema class
   CollectionSchema _schemaFromJson(Object? body) {
     final object = body is Map<String, Object?> ? body : <String, Object?>{};
     final fields = object['fields'];
@@ -395,6 +524,7 @@ class ElmixServer {
     );
   }
 
+  // TODO(elijah): move this to the SchemaField class
   SchemaField _fieldFromJson(Object? body) {
     final object = body is Map<String, Object?> ? body : <String, Object?>{};
     final removable = object['removable'];
@@ -426,6 +556,62 @@ class ElmixServer {
   }
 }
 
+/// Admin Account credentials known to the server boundary.
+class ServerAdminAccount {
+  /// Creates a server-side Admin Account credential.
+  const ServerAdminAccount({
+    required this.id,
+    required this.email,
+    required this.password,
+  });
+
+  /// Stable Admin Account identifier.
+  final AdminAccountIdentifier id;
+
+  /// Admin Account email address.
+  final String email;
+
+  /// Password accepted by the server for this Admin Account.
+  final String password;
+}
+
+/// HTTP request methods accepted by the Elmix server boundary.
+enum ElmixHttpRequestMethod {
+  /// Requests a representation of the target resource.
+  get('GET'),
+
+  /// Requests headers for the target resource without a response body.
+  head('HEAD'),
+
+  /// Submits data to the target resource.
+  post('POST'),
+
+  /// Replaces the target resource with the request payload.
+  put('PUT'),
+
+  /// Deletes the target resource.
+  delete('DELETE'),
+
+  /// Establishes a tunnel to the target resource.
+  connect('CONNECT'),
+
+  /// Requests communication options for the target resource.
+  options('OPTIONS'),
+
+  /// Performs a message loop-back test along the request path.
+  trace('TRACE'),
+
+  /// Applies a partial modification to the target resource.
+  patch('PATCH')
+  ;
+
+  /// Creates an HTTP request method with its wire value.
+  const ElmixHttpRequestMethod(this.value);
+
+  /// Uppercase method value sent over HTTP.
+  final String value;
+}
+
 /// Transport-independent representation of an HTTP request.
 class ElmixHttpRequest {
   /// Creates an HTTP-shaped request for the Elmix server.
@@ -437,7 +623,7 @@ class ElmixHttpRequest {
   });
 
   /// The uppercase HTTP method.
-  final String method;
+  final ElmixHttpRequestMethod method;
 
   /// The request path.
   final String path;
@@ -448,8 +634,18 @@ class ElmixHttpRequest {
   /// Request headers.
   final Map<String, String> headers;
 
-  /// The Engine request context represented by this HTTP request.
-  RequestContext get context {
+  /// Bearer token from the Authorization header, when present.
+  String? get bearerToken {
+    final authorization = headers['authorization'] ?? headers['Authorization'];
+    const prefix = 'Bearer ';
+    if (authorization == null || !authorization.startsWith(prefix)) {
+      return null;
+    }
+    return authorization.substring(prefix.length);
+  }
+
+  /// The Engine request context represented by explicit auth headers.
+  RequestContext get headerContext {
     final authCollection = headers['x-elmix-auth-collection'];
     final authId = headers['x-elmix-auth-id'];
     if (authCollection == null || authId == null) {

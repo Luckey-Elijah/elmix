@@ -11,4 +11,4 @@ dependencies:
   elmix_engine: 0.1.0-dev
 
 dev_dependencies:
-  test: ^1.26.0
+  test: ^1.31.1
