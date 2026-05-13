@@ -199,6 +199,177 @@ void main() {
       expect(allowed.statusCode, 200);
     });
 
+    test(
+      'authenticates Auth Records without requiring public list access',
+      () async {
+        final storage = MemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        final server = ElmixServer(engine);
+
+        await engine.registerCollection(
+          const CollectionSchema.auth(
+            name: 'members',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'email', type: FieldType.email, required: true),
+              SchemaField(
+                name: 'password',
+                type: FieldType.password,
+                required: true,
+              ),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{
+              CollectionOperation.list: AccessRule('auth.id == "member_1"'),
+            },
+          ),
+        );
+        await engine
+            .collection('members')
+            .create(
+              const Record(
+                collection: 'members',
+                id: RecordIdentifier('member_1'),
+                data: <String, Object?>{
+                  'email': 'ada@example.com',
+                  'password': 'correct horse',
+                },
+              ),
+            );
+
+        final deniedList = await server.handle(
+          const ElmixHttpRequest(
+            method: 'GET',
+            path: '/api/collections/members/records',
+          ),
+        );
+        expect(deniedList.statusCode, 403);
+
+        final auth = await server.handle(
+          const ElmixHttpRequest(
+            method: 'POST',
+            path: '/api/collections/members/auth-with-password',
+            body: <String, Object?>{
+              'email': 'ada@example.com',
+              'password': 'correct horse',
+            },
+          ),
+        );
+
+        expect(auth.statusCode, 200);
+        expect(
+          (auth.body! as Map<String, Object?>)['token'],
+          isA<String>(),
+        );
+      },
+    );
+
+    test('issues unique bearer tokens for repeated authentication', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema.auth(
+          name: 'members',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'email', type: FieldType.email, required: true),
+            SchemaField(
+              name: 'password',
+              type: FieldType.password,
+              required: true,
+            ),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        ),
+      );
+      await engine
+          .collection('members')
+          .create(
+            const Record(
+              collection: 'members',
+              id: RecordIdentifier('member_1'),
+              data: <String, Object?>{
+                'email': 'ada@example.com',
+                'password': 'correct horse',
+              },
+            ),
+          );
+
+      Future<String> authenticate() async {
+        final response = await server.handle(
+          const ElmixHttpRequest(
+            method: 'POST',
+            path: '/api/collections/members/auth-with-password',
+            body: <String, Object?>{
+              'email': 'ada@example.com',
+              'password': 'correct horse',
+            },
+          ),
+        );
+        expect(response.statusCode, 200);
+        return (response.body! as Map<String, Object?>)['token']! as String;
+      }
+
+      final firstToken = await authenticate();
+      final secondToken = await authenticate();
+
+      expect(firstToken, isNot(secondToken));
+      expect(
+        firstToken,
+        isNot(base64Url.encode(utf8.encode('members:member_1:0'))),
+      );
+    });
+
+    test('decodes date query filter values before listing records', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'events',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'startsAt', type: FieldType.date, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        ),
+      );
+      await engine
+          .collection('events')
+          .create(
+            Record(
+              collection: 'events',
+              id: const RecordIdentifier('event_1'),
+              data: <String, Object?>{
+                'startsAt': DateTime.utc(2026, 5, 13),
+              },
+            ),
+          );
+      final query = jsonEncode(<String, Object?>{
+        'filters': <Object?>[
+          <String, Object?>{
+            'field': 'startsAt',
+            'operator': 'greaterThanOrEquals',
+            'value': '2026-05-13T00:00:00.000Z',
+          },
+        ],
+      });
+
+      final response = await server.handle(
+        ElmixHttpRequest(
+          method: 'GET',
+          path: '/api/collections/events/records?query=$query',
+        ),
+      );
+
+      expect(response.statusCode, 200);
+      final body = response.body! as Map<String, Object?>;
+      expect(body['totalItems'], 1);
+      expect(storage.lastQuery!.filters.single.value, isA<DateTime>());
+    });
+
     test('creates, views, updates, and deletes collection records', () async {
       final storage = MemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);

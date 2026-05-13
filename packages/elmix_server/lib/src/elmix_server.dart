@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:elmix_engine/elmix_engine.dart';
 
@@ -128,7 +129,7 @@ class ElmixServer {
             collection,
             context: _requestContext(request),
           )
-          .list(query: _queryExpressionFromRequest(request));
+          .list(query: await _queryExpressionFromRequest(request, collection));
       return ElmixHttpResponse.ok(_recordPageToJson(page));
     }
     if (request.method == 'POST') {
@@ -227,26 +228,12 @@ class ElmixServer {
       );
     }
 
-    final page = await engine
-        .collection(collection)
-        .list(
-          query: QueryExpression(
-            filters: <QueryFilter>[
-              QueryFilter(
-                field: 'email',
-                operator: QueryOperator.equals,
-                value: email,
-              ),
-              QueryFilter(
-                field: 'password',
-                operator: QueryOperator.equals,
-                value: password,
-              ),
-            ],
-            pagination: const QueryPagination(perPage: 1),
-          ),
-        );
-    if (page.items.isEmpty) {
+    final record = await engine.authenticateAuthRecordWithPassword(
+      collection: collection,
+      email: email,
+      password: password,
+    );
+    if (record == null) {
       return _error(
         statusCode: 401,
         code: 'invalid_credentials',
@@ -254,14 +241,9 @@ class ElmixServer {
       );
     }
 
-    final record = page.items.single;
-    final authRecord = await engine.runAuthenticationAction(
+    final authRecord = AuthRecordIdentity(
       collection: collection,
-      action: AuthenticationOperation.authenticate,
-      run: () async => AuthRecordIdentity(
-        collection: collection,
-        id: record.id,
-      ),
+      id: record.id,
     );
     final token = _issueAuthToken(authRecord);
     return ElmixHttpResponse.ok(<String, Object?>{
@@ -514,7 +496,10 @@ class ElmixServer {
     );
   }
 
-  QueryExpression _queryExpressionFromRequest(ElmixHttpRequest request) {
+  Future<QueryExpression> _queryExpressionFromRequest(
+    ElmixHttpRequest request,
+    String collection,
+  ) async {
     final encoded = request.queryParameters['query'];
     if (encoded == null) {
       return const QueryExpression();
@@ -523,25 +508,36 @@ class ElmixServer {
     final object = decoded is Map<String, Object?>
         ? decoded
         : const <String, Object?>{};
+    final schema = await engine.getCollectionSchema(collection);
     return QueryExpression(
-      filters: _queryFilters(object['filters']),
+      filters: _queryFilters(object['filters'], schema: schema),
       sort: _querySort(object['sort']),
       pagination: _queryPagination(object['pagination']),
     );
   }
 
-  List<QueryFilter> _queryFilters(Object? value) {
+  List<QueryFilter> _queryFilters(
+    Object? value, {
+    required CollectionSchema? schema,
+  }) {
     if (value is! List<Object?>) {
       return const <QueryFilter>[];
     }
+    final dateFields = <String>{
+      for (final field in schema?.fields ?? const <SchemaField>[])
+        if (field.type == FieldType.date) field.name,
+    };
     return value.map((item) {
       final object = item is Map<String, Object?>
           ? item
           : const <String, Object?>{};
+      final field = object['field']! as String;
       return QueryFilter(
-        field: object['field']! as String,
+        field: field,
         operator: _queryOperator(object['operator']! as String),
-        value: object['value'],
+        value: dateFields.contains(field)
+            ? _decodeDateField(field, object['value'])
+            : object['value'],
       );
     }).toList();
   }
@@ -582,12 +578,9 @@ class ElmixServer {
   }
 
   String _issueAuthToken(AuthRecordIdentity authRecord) {
-    final tokenData =
-        '${authRecord.collection}:${authRecord.id.value}:'
-        '${_authSessions.length}';
-    final token = base64Url.encode(
-      utf8.encode(tokenData),
-    );
+    final random = Random.secure();
+    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+    final token = base64UrlEncode(bytes);
     _authSessions[token] = authRecord;
     return token;
   }
