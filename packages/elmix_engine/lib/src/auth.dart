@@ -23,13 +23,20 @@ class RequestContext {
   /// Creates request context for Engine use cases.
   const RequestContext({
     this.authRecord,
+    this.isSystem = false,
   });
 
   /// Anonymous request context.
   static const anonymous = RequestContext();
 
+  /// Trusted framework context for control-plane use cases.
+  static const system = RequestContext(isSystem: true);
+
   /// The authenticated application record, when present.
   final AuthRecordIdentity? authRecord;
+
+  /// Whether this request comes from trusted framework code.
+  final bool isSystem;
 }
 
 /// A record from an auth-enabled collection that can authenticate to APIs.

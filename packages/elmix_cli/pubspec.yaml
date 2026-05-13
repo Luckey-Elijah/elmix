@@ -8,9 +8,15 @@ environment:
   sdk: ^3.11.0
 
 dependencies:
+  args: ^2.7.0
+  elmix_admin: 0.1.0-dev
   elmix_engine: 0.1.0-dev
   elmix_server: 0.1.0-dev
   elmix_sqlite: 0.1.0-dev
+  mason_logger: ^0.3.5
 
 executables:
   elmix: elmix
+
+dev_dependencies:
+  test: ^1.31.1

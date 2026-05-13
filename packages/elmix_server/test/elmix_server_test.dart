@@ -14,7 +14,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -51,6 +51,56 @@ void main() {
       });
     });
 
+    test('does not expose built-in Admin Account records publicly', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema.auth(
+          name: '_admins',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'email', type: .email, required: true),
+            SchemaField(
+              name: 'passwordHash',
+              type: .password,
+              required: true,
+            ),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{
+            .list: AccessRule('false'),
+            .view: AccessRule('false'),
+            .create: AccessRule('false'),
+            .update: AccessRule('false'),
+            .delete: AccessRule('false'),
+          },
+        ),
+      );
+      await engine
+          .collection('_admins', context: RequestContext.system)
+          .create(
+            const AuthRecord(
+              collection: '_admins',
+              id: RecordIdentifier('admin@example.com'),
+              data: <String, Object?>{
+                'email': 'admin@example.com',
+                'passwordHash': 'stored-password-hash',
+              },
+            ),
+          );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: 'GET',
+          path: '/api/collections/_admins/records',
+        ),
+      );
+
+      expect(response.statusCode, 403);
+      expect(response.body.toString(), isNot(contains('stored-password-hash')));
+    });
+
     test('creates, views, updates, and deletes collection records', () async {
       final storage = MemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);
@@ -61,8 +111,8 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -149,9 +199,9 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'body', type: FieldType.text, required: true),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'body', type: .text, required: true),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -201,7 +251,7 @@ void main() {
           name: 'events',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'startsAt', type: FieldType.date, required: true),
+            SchemaField(name: 'startsAt', type: .date, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -248,10 +298,10 @@ void main() {
             name: 'posts',
             fields: <SchemaField>[
               SchemaField.recordIdentifier(),
-              SchemaField(name: 'title', type: FieldType.text, required: true),
+              SchemaField(name: 'title', type: .text, required: true),
             ],
             accessRules: <CollectionOperation, AccessRule>{
-              CollectionOperation.list: AccessRule('auth.id == "member_1"'),
+              .list: AccessRule('auth.id == "member_1"'),
             },
           ),
         );
@@ -381,7 +431,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),

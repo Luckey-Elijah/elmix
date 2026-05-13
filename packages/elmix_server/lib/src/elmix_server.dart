@@ -443,7 +443,7 @@ class ElmixServer {
 
     final dateFields = <String>{
       for (final field in schema.fields)
-        if (field.type == FieldType.date) field.name,
+        if (field.type == .date) field.name,
     };
     return <String, Object?>{
       for (final entry in data.entries)
@@ -534,15 +534,13 @@ class ElmixServer {
       type: _fieldType(object['type']! as String),
       required: object['required'] == true,
       removable: removable is! bool || removable,
-      systemRole: systemRole is String
-          ? _fieldSystemRole(systemRole)
-          : FieldSystemRole.none,
+      systemRole: systemRole is String ? _fieldSystemRole(systemRole) : .none,
       targetCollection: object['targetCollection'] as String?,
     );
   }
 
   FieldType _fieldType(String name) {
-    return FieldType.values.firstWhere((type) => type.name == name);
+    return .values.firstWhere((type) => type.name == name);
   }
 
   FieldSystemRole _fieldSystemRole(String name) {

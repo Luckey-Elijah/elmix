@@ -18,13 +18,13 @@ void main() {
             name: 'members',
             fields: <SchemaField>[
               SchemaField.recordIdentifier(),
-              SchemaField(name: 'email', type: FieldType.email, required: true),
+              SchemaField(name: 'email', type: .email, required: true),
               SchemaField(
                 name: 'passwordHash',
-                type: FieldType.password,
+                type: .password,
                 required: true,
               ),
-              SchemaField(name: 'displayName', type: FieldType.text),
+              SchemaField(name: 'displayName', type: .text),
             ],
             accessRules: <CollectionOperation, AccessRule>{},
           ),
@@ -34,11 +34,11 @@ void main() {
             name: 'posts',
             fields: <SchemaField>[
               SchemaField.recordIdentifier(),
-              SchemaField(name: 'title', type: FieldType.text, required: true),
-              SchemaField(name: 'published', type: FieldType.bool),
+              SchemaField(name: 'title', type: .text, required: true),
+              SchemaField(name: 'published', type: .bool),
               SchemaField(
                 name: 'author',
-                type: FieldType.relation,
+                type: .relation,
                 required: true,
                 targetCollection: 'members',
               ),
@@ -120,7 +120,7 @@ void main() {
             filters: <QueryFilter>[
               QueryFilter(
                 field: 'author',
-                operator: QueryOperator.equals,
+                operator: .equals,
                 value: 'member_1',
               ),
             ],

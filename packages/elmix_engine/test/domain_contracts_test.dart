@@ -7,15 +7,15 @@ void main() {
       expect(
         FieldType.values,
         containsAll(<FieldType>[
-          FieldType.text,
-          FieldType.number,
-          FieldType.bool,
-          FieldType.date,
-          FieldType.email,
-          FieldType.password,
-          FieldType.select,
-          FieldType.relation,
-          FieldType.json,
+          .text,
+          .number,
+          .bool,
+          .date,
+          .email,
+          .password,
+          .select,
+          .relation,
+          .json,
         ]),
       );
 
@@ -55,10 +55,10 @@ void main() {
       const schema = CollectionSchema.auth(
         name: 'members',
         fields: <SchemaField>[
-          SchemaField(name: 'email', type: FieldType.email, required: true),
+          SchemaField(name: 'email', type: .email, required: true),
           SchemaField(
             name: 'password',
-            type: FieldType.password,
+            type: .password,
             required: true,
           ),
         ],
@@ -92,21 +92,15 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         );
         const query = QueryExpression(
           filters: <QueryFilter>[
-            QueryFilter(
-              field: 'published',
-              operator: QueryOperator.equals,
-              value: true,
-            ),
+            QueryFilter(field: 'published', operator: .equals, value: true),
           ],
-          sort: <QuerySort>[
-            QuerySort(field: 'created', direction: SortDirection.descending),
-          ],
+          sort: [QuerySort(field: 'created', direction: .descending)],
           pagination: QueryPagination(page: 2, perPage: 10),
         );
 
@@ -138,8 +132,8 @@ void main() {
       final hook = RecordingActionHook();
       const context = ActionHookContext(
         collection: 'posts',
-        operation: CollectionOperation.create,
-        phase: HookPhase.before,
+        operation: .create,
+        phase: .before,
       );
 
       await hook(context);
@@ -152,7 +146,7 @@ void main() {
 }
 
 class SlugField extends SchemaField {
-  const SlugField() : super(name: 'slug', type: FieldType.text);
+  const SlugField() : super(name: 'slug', type: .text);
 }
 
 class AllowPublicReadRule extends AccessRule {
