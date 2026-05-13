@@ -16,7 +16,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -63,9 +63,9 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'views', type: FieldType.number),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'views', type: .number),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -120,6 +120,56 @@ void main() {
       expect(storage.lastQuery!.pagination.perPage, 10);
     });
 
+    test('does not expose built-in Admin Account records publicly', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema.auth(
+          name: '_admins',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'email', type: .email, required: true),
+            SchemaField(
+              name: 'passwordHash',
+              type: .password,
+              required: true,
+            ),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{
+            .list: AccessRule('false'),
+            .view: AccessRule('false'),
+            .create: AccessRule('false'),
+            .update: AccessRule('false'),
+            .delete: AccessRule('false'),
+          },
+        ),
+      );
+      await engine
+          .collection('_admins', context: RequestContext.system)
+          .create(
+            const AuthRecord(
+              collection: '_admins',
+              id: RecordIdentifier('admin@example.com'),
+              data: <String, Object?>{
+                'email': 'admin@example.com',
+                'passwordHash': 'stored-password-hash',
+              },
+            ),
+          );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: .get,
+          path: '/api/collections/_admins/records',
+        ),
+      );
+
+      expect(response.statusCode, 403);
+      expect(response.body.toString(), isNot(contains('stored-password-hash')));
+    });
+
     test('authenticates Auth Records and accepts bearer tokens', () async {
       final storage = MemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);
@@ -130,10 +180,10 @@ void main() {
           name: 'members',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'email', type: FieldType.email, required: true),
+            SchemaField(name: 'email', type: .email, required: true),
             SchemaField(
               name: 'password',
-              type: FieldType.password,
+              type: .password,
               required: true,
             ),
           ],
@@ -145,7 +195,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{
             CollectionOperation.list: AccessRule(
@@ -169,7 +219,7 @@ void main() {
 
       final auth = await server.handle(
         const ElmixHttpRequest(
-          method: ElmixHttpRequestMethod.post,
+          method: .post,
           path: '/api/collections/members/auth-with-password',
           body: <String, Object?>{
             'email': 'ada@example.com',
@@ -188,7 +238,7 @@ void main() {
 
       final allowed = await server.handle(
         ElmixHttpRequest(
-          method: ElmixHttpRequestMethod.get,
+          method: .get,
           path: '/api/collections/posts/records',
           headers: <String, String>{
             'authorization': 'Bearer ${authBody['token']}',
@@ -211,10 +261,10 @@ void main() {
             name: 'members',
             fields: <SchemaField>[
               SchemaField.recordIdentifier(),
-              SchemaField(name: 'email', type: FieldType.email, required: true),
+              SchemaField(name: 'email', type: .email, required: true),
               SchemaField(
                 name: 'password',
-                type: FieldType.password,
+                type: .password,
                 required: true,
               ),
             ],
@@ -238,7 +288,7 @@ void main() {
 
         final deniedList = await server.handle(
           const ElmixHttpRequest(
-            method: ElmixHttpRequestMethod.get,
+            method: .get,
             path: '/api/collections/members/records',
           ),
         );
@@ -246,7 +296,7 @@ void main() {
 
         final auth = await server.handle(
           const ElmixHttpRequest(
-            method: ElmixHttpRequestMethod.post,
+            method: .post,
             path: '/api/collections/members/auth-with-password',
             body: <String, Object?>{
               'email': 'ada@example.com',
@@ -273,10 +323,10 @@ void main() {
           name: 'members',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'email', type: FieldType.email, required: true),
+            SchemaField(name: 'email', type: .email, required: true),
             SchemaField(
               name: 'password',
-              type: FieldType.password,
+              type: .password,
               required: true,
             ),
           ],
@@ -299,7 +349,7 @@ void main() {
       Future<String> authenticate() async {
         final response = await server.handle(
           const ElmixHttpRequest(
-            method: ElmixHttpRequestMethod.post,
+            method: .post,
             path: '/api/collections/members/auth-with-password',
             body: <String, Object?>{
               'email': 'ada@example.com',
@@ -331,7 +381,7 @@ void main() {
           name: 'events',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'startsAt', type: FieldType.date, required: true),
+            SchemaField(name: 'startsAt', type: .date, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -359,7 +409,7 @@ void main() {
 
       final response = await server.handle(
         ElmixHttpRequest(
-          method: ElmixHttpRequestMethod.get,
+          method: .get,
           path: '/api/collections/events/records?query=$query',
         ),
       );
@@ -380,8 +430,8 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -468,9 +518,9 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'body', type: FieldType.text, required: true),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'body', type: .text, required: true),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -520,7 +570,7 @@ void main() {
           name: 'events',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'startsAt', type: FieldType.date, required: true),
+            SchemaField(name: 'startsAt', type: .date, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),
@@ -567,10 +617,10 @@ void main() {
             name: 'posts',
             fields: <SchemaField>[
               SchemaField.recordIdentifier(),
-              SchemaField(name: 'title', type: FieldType.text, required: true),
+              SchemaField(name: 'title', type: .text, required: true),
             ],
             accessRules: <CollectionOperation, AccessRule>{
-              CollectionOperation.list: AccessRule('auth.id == "member_1"'),
+              .list: AccessRule('auth.id == "member_1"'),
             },
           ),
         );
@@ -700,7 +750,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         ),

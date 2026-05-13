@@ -52,7 +52,7 @@ class QuerySort {
   /// Creates a field sort instruction.
   const QuerySort({
     required this.field,
-    this.direction = SortDirection.ascending,
+    this.direction = .ascending,
   });
 
   /// The schema field to sort by.

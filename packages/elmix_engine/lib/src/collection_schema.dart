@@ -53,35 +53,35 @@ class SchemaField {
     required this.type,
     this.required = false,
     this.removable = true,
-    this.systemRole = FieldSystemRole.none,
+    this.systemRole = .none,
     this.targetCollection,
   });
 
   /// Creates the required non-removable record identifier field.
   const SchemaField.recordIdentifier()
     : name = 'id',
-      type = FieldType.text,
+      type = .text,
       required = true,
       removable = false,
-      systemRole = FieldSystemRole.recordIdentifier,
+      systemRole = .recordIdentifier,
       targetCollection = null;
 
   /// Creates the removable default created timestamp field.
   const SchemaField.created()
     : name = 'created',
-      type = FieldType.date,
+      type = .date,
       required = false,
       removable = true,
-      systemRole = FieldSystemRole.created,
+      systemRole = .created,
       targetCollection = null;
 
   /// Creates the removable default updated timestamp field.
   const SchemaField.updated()
     : name = 'updated',
-      type = FieldType.date,
+      type = .date,
       required = false,
       removable = true,
-      systemRole = FieldSystemRole.updated,
+      systemRole = .updated,
       targetCollection = null;
 
   /// The field name.

@@ -16,10 +16,10 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
             SchemaField(
               name: 'author',
-              type: FieldType.relation,
+              type: .relation,
               targetCollection: 'users',
             ),
           ],
@@ -68,7 +68,7 @@ void main() {
         _schemaWithName(
           'posts',
           const <SchemaField>[
-            SchemaField(name: 'title', type: FieldType.text),
+            SchemaField(name: 'title', type: .text),
           ],
         ),
       );
@@ -76,7 +76,7 @@ void main() {
         _schemaWithName(
           'members',
           const <SchemaField>[
-            SchemaField(name: 'email', type: FieldType.email),
+            SchemaField(name: 'email', type: .email),
           ],
         ),
       );
@@ -114,18 +114,18 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'views', type: FieldType.number),
-            SchemaField(name: 'published', type: FieldType.bool),
-            SchemaField(name: 'publishedAt', type: FieldType.date),
-            SchemaField(name: 'authorEmail', type: FieldType.email),
-            SchemaField(name: 'status', type: FieldType.select),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'views', type: .number),
+            SchemaField(name: 'published', type: .bool),
+            SchemaField(name: 'publishedAt', type: .date),
+            SchemaField(name: 'authorEmail', type: .email),
+            SchemaField(name: 'status', type: .select),
             SchemaField(
               name: 'author',
-              type: FieldType.relation,
+              type: .relation,
               targetCollection: 'users',
             ),
-            SchemaField(name: 'metadata', type: FieldType.json),
+            SchemaField(name: 'metadata', type: .json),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         );
@@ -186,7 +186,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         );
@@ -194,8 +194,8 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'published', type: FieldType.bool),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'published', type: .bool),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         );
@@ -231,7 +231,7 @@ void main() {
                 filters: <QueryFilter>[
                   QueryFilter(
                     field: 'published',
-                    operator: QueryOperator.equals,
+                    operator: .equals,
                     value: true,
                   ),
                 ],
@@ -265,8 +265,8 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
-            SchemaField(name: 'status', type: FieldType.text),
+            SchemaField(name: 'title', type: .text, required: true),
+            SchemaField(name: 'status', type: .text),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         );
@@ -274,7 +274,7 @@ void main() {
           name: 'posts',
           fields: <SchemaField>[
             SchemaField.recordIdentifier(),
-            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'title', type: .text, required: true),
           ],
           accessRules: <CollectionOperation, AccessRule>{},
         );
@@ -319,8 +319,8 @@ void main() {
       final storage = SqliteStorageAdapter();
       await storage.putCollectionSchema(
         _postsSchemaWithFields(<SchemaField>[
-          const SchemaField(name: 'published', type: FieldType.bool),
-          const SchemaField(name: 'score', type: FieldType.number),
+          const SchemaField(name: 'published', type: .bool),
+          const SchemaField(name: 'score', type: .number),
         ]),
       );
 
@@ -352,13 +352,11 @@ void main() {
           filters: <QueryFilter>[
             QueryFilter(
               field: 'published',
-              operator: QueryOperator.equals,
+              operator: .equals,
               value: true,
             ),
           ],
-          sort: <QuerySort>[
-            QuerySort(field: 'score', direction: SortDirection.descending),
-          ],
+          sort: <QuerySort>[QuerySort(field: 'score', direction: .descending)],
         ),
       );
 
@@ -375,7 +373,7 @@ void main() {
         final storage = SqliteStorageAdapter();
         await storage.putCollectionSchema(
           _postsSchemaWithFields(<SchemaField>[
-            const SchemaField(name: 'title', type: FieldType.text),
+            const SchemaField(name: 'title', type: .text),
           ]),
         );
 
@@ -404,7 +402,7 @@ void main() {
             filters: <QueryFilter>[
               QueryFilter(
                 field: 'id',
-                operator: QueryOperator.equals,
+                operator: .equals,
                 value: 'post_2',
               ),
             ],
@@ -421,8 +419,8 @@ void main() {
       final storage = SqliteStorageAdapter();
       await storage.putCollectionSchema(
         _postsSchemaWithFields(<SchemaField>[
-          const SchemaField(name: 'title', type: FieldType.text),
-          const SchemaField(name: 'score', type: FieldType.number),
+          const SchemaField(name: 'title', type: .text),
+          const SchemaField(name: 'score', type: .number),
         ]),
       );
 
@@ -461,7 +459,7 @@ void main() {
           filters: <QueryFilter>[
             QueryFilter(
               field: 'score',
-              operator: QueryOperator.greaterThan,
+              operator: .greaterThan,
               value: 10,
             ),
           ],

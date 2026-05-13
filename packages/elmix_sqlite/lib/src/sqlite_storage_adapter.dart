@@ -234,7 +234,7 @@ class SqliteStorageAdapter implements StorageAdapter {
     }
 
     for (final field in schema.fields) {
-      if (field.systemRole == FieldSystemRole.recordIdentifier) {
+      if (field.systemRole == .recordIdentifier) {
         continue;
       }
       if (existingColumns.contains(field.name)) {
@@ -257,11 +257,11 @@ class SqliteStorageAdapter implements StorageAdapter {
     required Set<String> existingColumns,
   }) {
     final currentFieldNames = schema.fields
-        .where((field) => field.systemRole != FieldSystemRole.recordIdentifier)
+        .where((field) => field.systemRole != .recordIdentifier)
         .map((field) => field.name)
         .toSet();
     final removedFields = previousSchema.fields
-        .where((field) => field.systemRole != FieldSystemRole.recordIdentifier)
+        .where((field) => field.systemRole != .recordIdentifier)
         .where((field) => !currentFieldNames.contains(field.name))
         .where((field) => existingColumns.contains(field.name));
 
@@ -278,7 +278,7 @@ class SqliteStorageAdapter implements StorageAdapter {
   void _putSchemaRecord(Record record, CollectionSchema schema) {
     final table = _collectionTableName(record.collection);
     final dataFields = schema.fields
-        .where((field) => field.systemRole != FieldSystemRole.recordIdentifier)
+        .where((field) => field.systemRole != .recordIdentifier)
         .toList();
     final columns = <String>['id', ...dataFields.map((field) => field.name)];
     final placeholders = List.filled(columns.length, '?').join(', ');
@@ -318,7 +318,7 @@ class SqliteStorageAdapter implements StorageAdapter {
 
     final data = <String, Object?>{};
     for (final field in schema.fields) {
-      if (field.systemRole == FieldSystemRole.recordIdentifier) {
+      if (field.systemRole == .recordIdentifier) {
         continue;
       }
       data[field.name] = _fromSqliteValue(field, row[field.name]);
@@ -401,19 +401,17 @@ class SqliteStorageAdapter implements StorageAdapter {
     return '$column = excluded.$column';
   }
 
-  static String _sqliteType(SchemaField field) {
-    return switch (field.type) {
-      FieldType.number => 'REAL',
-      FieldType.bool => 'INTEGER',
-      FieldType.text ||
-      FieldType.email ||
-      FieldType.password ||
-      FieldType.select ||
-      FieldType.relation ||
-      FieldType.date ||
-      FieldType.json => 'TEXT',
-    };
-  }
+  static String _sqliteType(SchemaField field) => switch (field.type) {
+    .number => 'REAL',
+    .bool => 'INTEGER',
+    .text ||
+    .email ||
+    .password ||
+    .select ||
+    .relation ||
+    .date ||
+    .json => 'TEXT',
+  };
 
   static Object? _toSqliteValue(SchemaField field, Object? value) {
     if (value == null) {
@@ -421,9 +419,9 @@ class SqliteStorageAdapter implements StorageAdapter {
     }
 
     return switch (field.type) {
-      FieldType.bool => (value as bool) ? 1 : 0,
-      FieldType.date => (value as DateTime).toIso8601String(),
-      FieldType.json => jsonEncode(value),
+      .bool => (value as bool) ? 1 : 0,
+      .date => (value as DateTime).toIso8601String(),
+      .json => jsonEncode(value),
       _ => value,
     };
   }
@@ -434,10 +432,10 @@ class SqliteStorageAdapter implements StorageAdapter {
     }
 
     return switch (field.type) {
-      FieldType.bool => value == 1,
-      FieldType.date => DateTime.parse(value as String),
-      FieldType.json => jsonDecode(value as String),
-      FieldType.number => value,
+      .bool => value == 1,
+      .date => DateTime.parse(value as String),
+      .json => jsonDecode(value as String),
+      .number => value,
       _ => value,
     };
   }
@@ -496,10 +494,10 @@ class SqliteStorageAdapter implements StorageAdapter {
   static SchemaField _fieldFromJson(Map<String, Object?> json) {
     return SchemaField(
       name: json['name']! as String,
-      type: FieldType.values.byName(json['type']! as String),
+      type: .values.byName(json['type']! as String),
       required: json['required']! as bool,
       removable: json['removable']! as bool,
-      systemRole: FieldSystemRole.values.byName(json['systemRole']! as String),
+      systemRole: .values.byName(json['systemRole']! as String),
       targetCollection: json['targetCollection'] as String?,
     );
   }
@@ -509,24 +507,24 @@ class SqliteStorageAdapter implements StorageAdapter {
       final value = _fieldValue(record, filter.field);
 
       return switch (filter.operator) {
-        QueryOperator.equals => value == filter.value,
-        QueryOperator.notEquals => value != filter.value,
-        QueryOperator.greaterThan => _matchesRange(
+        .equals => value == filter.value,
+        .notEquals => value != filter.value,
+        .greaterThan => _matchesRange(
           value,
           filter.value,
           (comparison) => comparison > 0,
         ),
-        QueryOperator.greaterThanOrEquals => _matchesRange(
+        .greaterThanOrEquals => _matchesRange(
           value,
           filter.value,
           (comparison) => comparison >= 0,
         ),
-        QueryOperator.lessThan => _matchesRange(
+        .lessThan => _matchesRange(
           value,
           filter.value,
           (comparison) => comparison < 0,
         ),
-        QueryOperator.lessThanOrEquals => _matchesRange(
+        .lessThanOrEquals => _matchesRange(
           value,
           filter.value,
           (comparison) => comparison <= 0,
@@ -541,9 +539,7 @@ class SqliteStorageAdapter implements StorageAdapter {
     List<QuerySort> sort,
   ) {
     for (final instruction in sort) {
-      final direction = instruction.direction == SortDirection.ascending
-          ? 1
-          : -1;
+      final direction = instruction.direction == .ascending ? 1 : -1;
       final comparison =
           _compareValues(
             _fieldValue(left, instruction.field),
