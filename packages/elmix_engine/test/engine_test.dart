@@ -662,6 +662,56 @@ void main() {
       );
     });
 
+    test(
+      'authenticates Auth Records without applying collection list rules',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        await engine.registerCollection(
+          const CollectionSchema.auth(
+            name: 'members',
+            fields: [
+              SchemaField(name: 'email', type: FieldType.email, required: true),
+              SchemaField(
+                name: 'password',
+                type: FieldType.password,
+                required: true,
+              ),
+            ],
+            accessRules: {
+              CollectionOperation.list: AccessRule('false'),
+            },
+          ),
+        );
+        await engine
+            .collection('members')
+            .create(
+              const Record(
+                collection: 'members',
+                id: RecordIdentifier('member-1'),
+                data: {
+                  'email': 'member@example.test',
+                  'password': 'secret',
+                },
+              ),
+            );
+
+        final authRecord = await engine.authenticateAuthRecordWithPassword(
+          collection: 'members',
+          email: 'member@example.test',
+          password: 'secret',
+        );
+
+        expect(authRecord.id.value, 'member-1');
+        expect(authRecord.data['password'], isNot('secret'));
+        expect(AuthPassword.isHash(authRecord.data['password']), isTrue);
+        await expectLater(
+          engine.collection('members').list(),
+          throwsA(isA<AuthorizationException>()),
+        );
+      },
+    );
+
     test('creates, lists, views, updates, and deletes records', () async {
       final storage = InMemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);

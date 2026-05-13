@@ -33,7 +33,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/collections/posts/records',
         ),
       );
@@ -95,7 +95,7 @@ void main() {
 
       final response = await server.handle(
         ElmixHttpRequest(
-          method: 'GET',
+          method: ElmixHttpRequestMethod.get,
           path: '/api/collections/posts/records?query=$query',
         ),
       );
@@ -169,7 +169,7 @@ void main() {
 
       final auth = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: ElmixHttpRequestMethod.post,
           path: '/api/collections/members/auth-with-password',
           body: <String, Object?>{
             'email': 'ada@example.com',
@@ -188,7 +188,7 @@ void main() {
 
       final allowed = await server.handle(
         ElmixHttpRequest(
-          method: 'GET',
+          method: ElmixHttpRequestMethod.get,
           path: '/api/collections/posts/records',
           headers: <String, String>{
             'authorization': 'Bearer ${authBody['token']}',
@@ -238,7 +238,7 @@ void main() {
 
         final deniedList = await server.handle(
           const ElmixHttpRequest(
-            method: 'GET',
+            method: ElmixHttpRequestMethod.get,
             path: '/api/collections/members/records',
           ),
         );
@@ -246,7 +246,7 @@ void main() {
 
         final auth = await server.handle(
           const ElmixHttpRequest(
-            method: 'POST',
+            method: ElmixHttpRequestMethod.post,
             path: '/api/collections/members/auth-with-password',
             body: <String, Object?>{
               'email': 'ada@example.com',
@@ -299,7 +299,7 @@ void main() {
       Future<String> authenticate() async {
         final response = await server.handle(
           const ElmixHttpRequest(
-            method: 'POST',
+            method: ElmixHttpRequestMethod.post,
             path: '/api/collections/members/auth-with-password',
             body: <String, Object?>{
               'email': 'ada@example.com',
@@ -359,7 +359,7 @@ void main() {
 
       final response = await server.handle(
         ElmixHttpRequest(
-          method: 'GET',
+          method: ElmixHttpRequestMethod.get,
           path: '/api/collections/events/records?query=$query',
         ),
       );
@@ -389,7 +389,7 @@ void main() {
 
       final create = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/collections/posts/records',
           body: <String, Object?>{
             'id': 'post_1',
@@ -405,7 +405,7 @@ void main() {
 
       final view = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/collections/posts/records/post_1',
         ),
       );
@@ -421,7 +421,7 @@ void main() {
 
       final update = await server.handle(
         const ElmixHttpRequest(
-          method: 'PATCH',
+          method: .patch,
           path: '/api/collections/posts/records/post_1',
           body: <String, Object?>{
             'data': <String, Object?>{
@@ -442,7 +442,7 @@ void main() {
 
       final delete = await server.handle(
         const ElmixHttpRequest(
-          method: 'DELETE',
+          method: .delete,
           path: '/api/collections/posts/records/post_1',
         ),
       );
@@ -451,7 +451,7 @@ void main() {
 
       final missing = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/collections/posts/records/post_1',
         ),
       );
@@ -491,7 +491,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'PATCH',
+          method: .patch,
           path: '/api/collections/posts/records/post_1',
           body: <String, Object?>{
             'data': <String, Object?>{'published': true},
@@ -528,7 +528,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/collections/events/records',
           body: <String, Object?>{
             'id': 'event_1',
@@ -577,7 +577,7 @@ void main() {
 
         final denied = await server.handle(
           const ElmixHttpRequest(
-            method: 'GET',
+            method: .get,
             path: '/api/collections/posts/records',
           ),
         );
@@ -591,7 +591,7 @@ void main() {
 
         final allowed = await server.handle(
           const ElmixHttpRequest(
-            method: 'GET',
+            method: .get,
             path: '/api/collections/posts/records',
             headers: <String, String>{
               'x-elmix-auth-collection': 'members',
@@ -612,7 +612,7 @@ void main() {
 
       final create = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/admin/collections',
           body: <String, Object?>{
             'name': 'posts',
@@ -640,7 +640,7 @@ void main() {
 
       final list = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/admin/collections',
         ),
       );
@@ -652,7 +652,7 @@ void main() {
 
       final view = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/admin/collections/posts',
         ),
       );
@@ -664,7 +664,7 @@ void main() {
 
       final update = await server.handle(
         const ElmixHttpRequest(
-          method: 'PUT',
+          method: .put,
           path: '/api/admin/collections/posts',
           body: <String, Object?>{
             'name': 'posts',
@@ -708,7 +708,7 @@ void main() {
 
       final create = await server.handle(
         const ElmixHttpRequest(
-          method: 'POST',
+          method: .post,
           path: '/api/admin/collections/posts/records',
           body: <String, Object?>{
             'id': 'post_1',
@@ -720,7 +720,7 @@ void main() {
 
       final list = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/admin/collections/posts/records',
         ),
       );
@@ -729,7 +729,7 @@ void main() {
 
       final view = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: .get,
           path: '/api/admin/collections/posts/records/post_1',
         ),
       );
@@ -738,7 +738,7 @@ void main() {
 
       final update = await server.handle(
         const ElmixHttpRequest(
-          method: 'PATCH',
+          method: .patch,
           path: '/api/admin/collections/posts/records/post_1',
           body: <String, Object?>{
             'data': <String, Object?>{'title': 'Admin updated'},
@@ -753,12 +753,276 @@ void main() {
 
       final delete = await server.handle(
         const ElmixHttpRequest(
-          method: 'DELETE',
+          method: .delete,
           path: '/api/admin/collections/posts/records/post_1',
         ),
       );
       expect(delete.statusCode, 204);
     });
+  });
+
+  group('ElmixServer authentication', () {
+    test('authenticates Admin Accounts separately from Auth Records', () async {
+      final engine = ElmixEngine(storage: MemoryStorageAdapter());
+      final server = ElmixServer(
+        engine,
+        adminAccounts: const <ServerAdminAccount>[
+          ServerAdminAccount(
+            id: AdminAccountIdentifier('admin_1'),
+            email: 'admin@example.test',
+            password: 'admin-secret',
+          ),
+        ],
+      );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: .post,
+          path: '/api/admin/auth-with-password',
+          body: <String, Object?>{
+            'email': 'admin@example.test',
+            'password': 'admin-secret',
+          },
+        ),
+      );
+
+      expect(response.statusCode, 200);
+      expect((response.body! as Map<String, Object?>)['admin'], {
+        'id': 'admin_1',
+        'email': 'admin@example.test',
+      });
+      expect(response.body! as Map<String, Object?>, isNot(contains('record')));
+    });
+
+    test(
+      'authenticates Auth Records and uses bearer tokens for Access Rules',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        await engine.registerCollection(
+          const CollectionSchema.auth(
+            name: 'members',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'email', type: FieldType.email, required: true),
+              SchemaField(
+                name: 'password',
+                type: FieldType.password,
+                required: true,
+              ),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{},
+          ),
+        );
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'title', type: FieldType.text, required: true),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{
+              CollectionOperation.list: AccessRule(
+                'auth.collection == "members" && auth.id == "member_1"',
+              ),
+            },
+          ),
+        );
+        await engine
+            .collection('members')
+            .create(
+              const Record(
+                collection: 'members',
+                id: RecordIdentifier('member_1'),
+                data: <String, Object?>{
+                  'email': 'member@example.test',
+                  'password': 'secret',
+                },
+              ),
+            );
+        await engine
+            .collection('posts')
+            .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{'title': 'Member post'},
+              ),
+            );
+        final server = ElmixServer(engine);
+
+        final auth = await server.handle(
+          const ElmixHttpRequest(
+            method: .post,
+            path: '/api/collections/members/auth-with-password',
+            body: <String, Object?>{
+              'email': 'member@example.test',
+              'password': 'secret',
+            },
+          ),
+        );
+        final token = (auth.body! as Map<String, Object?>)['token']! as String;
+        final allowed = await server.handle(
+          ElmixHttpRequest(
+            method: .get,
+            path: '/api/collections/posts/records',
+            headers: <String, String>{'authorization': 'Bearer $token'},
+          ),
+        );
+
+        expect(auth.statusCode, 200);
+        expect(token, isA<String>());
+        expect(token, isNot('record-session:members:member_1'));
+        expect(
+          ((auth.body! as Map<String, Object?>)['record']!
+              as Map<String, Object?>)['data'],
+          <String, Object?>{'email': 'member@example.test'},
+        );
+        expect(allowed.statusCode, 200);
+        expect((allowed.body! as Map<String, Object?>)['totalItems'], 1);
+      },
+    );
+
+    test('does not trust forged Auth Record bearer tokens', () async {
+      final engine = ElmixEngine(storage: MemoryStorageAdapter());
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{
+            CollectionOperation.list: AccessRule('auth.id == "member_1"'),
+          },
+        ),
+      );
+      await engine
+          .collection('posts')
+          .create(
+            const Record(
+              collection: 'posts',
+              id: RecordIdentifier('post_1'),
+              data: <String, Object?>{'title': 'Protected'},
+            ),
+          );
+      final server = ElmixServer(engine);
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: .get,
+          path: '/api/collections/posts/records',
+          headers: <String, String>{
+            'authorization': 'Bearer record:members:member_1',
+          },
+        ),
+      );
+
+      expect(response.statusCode, 403);
+    });
+
+    test(
+      'authenticates Auth Records without using the public list rule',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        await engine.registerCollection(
+          const CollectionSchema.auth(
+            name: 'members',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'email', type: FieldType.email, required: true),
+              SchemaField(
+                name: 'password',
+                type: FieldType.password,
+                required: true,
+              ),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{
+              CollectionOperation.list: AccessRule('false'),
+            },
+          ),
+        );
+        await engine
+            .collection('members')
+            .create(
+              const Record(
+                collection: 'members',
+                id: RecordIdentifier('member_1'),
+                data: <String, Object?>{
+                  'email': 'member@example.test',
+                  'password': 'secret',
+                },
+              ),
+            );
+        final server = ElmixServer(engine);
+
+        final response = await server.handle(
+          const ElmixHttpRequest(
+            method: .post,
+            path: '/api/collections/members/auth-with-password',
+            body: <String, Object?>{
+              'email': 'member@example.test',
+              'password': 'secret',
+            },
+          ),
+        );
+
+        expect(response.statusCode, 200);
+        expect(
+          (response.body! as Map<String, Object?>)['token'],
+          isA<String>(),
+        );
+      },
+    );
+
+    test(
+      'requires Admin Account sessions when admin credentials are configured',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        final server = ElmixServer(
+          engine,
+          adminAccounts: const <ServerAdminAccount>[
+            ServerAdminAccount(
+              id: AdminAccountIdentifier('admin_1'),
+              email: 'admin@example.test',
+              password: 'admin-secret',
+            ),
+          ],
+        );
+
+        final rejected = await server.handle(
+          const ElmixHttpRequest(
+            method: .get,
+            path: '/api/admin/collections',
+          ),
+        );
+        final auth = await server.handle(
+          const ElmixHttpRequest(
+            method: .post,
+            path: '/api/admin/auth-with-password',
+            body: <String, Object?>{
+              'email': 'admin@example.test',
+              'password': 'admin-secret',
+            },
+          ),
+        );
+        final token = (auth.body! as Map<String, Object?>)['token']! as String;
+        final accepted = await server.handle(
+          ElmixHttpRequest(
+            method: .get,
+            path: '/api/admin/collections',
+            headers: <String, String>{'authorization': 'Bearer $token'},
+          ),
+        );
+
+        expect(rejected.statusCode, 401);
+        expect(
+          ((rejected.body! as Map<String, Object?>)['error']!
+              as Map<String, Object?>)['code'],
+          'admin_session_required',
+        );
+        expect(accepted.statusCode, 200);
+      },
+    );
   });
 }
 
@@ -801,9 +1065,20 @@ class MemoryStorageAdapter implements StorageAdapter {
   }) async {
     lastQuery = query;
     final matching = (_records[collection]?.values ?? const <Record>[])
+        .where(
+          (record) => query.filters.every((filter) => _matches(record, filter)),
+        )
         .toList();
+    final start = (query.pagination.page - 1) * query.pagination.perPage;
+    final end = start + query.pagination.perPage;
+    final items = start >= matching.length
+        ? const <Record>[]
+        : matching.sublist(
+            start,
+            end > matching.length ? matching.length : end,
+          );
     return RecordPage(
-      items: List<Record>.unmodifiable(matching),
+      items: List<Record>.unmodifiable(items),
       page: query.pagination.page,
       perPage: query.pagination.perPage,
       totalItems: matching.length,
@@ -822,5 +1097,34 @@ class MemoryStorageAdapter implements StorageAdapter {
       () => <String, Record>{},
     )[record.id.value] = record;
     return record;
+  }
+
+  bool _matches(Record record, QueryFilter filter) {
+    final value = filter.field == 'id'
+        ? record.id.value
+        : record.data[filter.field];
+    return switch (filter.operator) {
+      QueryOperator.equals => value == filter.value,
+      QueryOperator.notEquals => value != filter.value,
+      QueryOperator.greaterThan => _compare(value, filter.value) > 0,
+      QueryOperator.greaterThanOrEquals => _compare(value, filter.value) >= 0,
+      QueryOperator.lessThan => _compare(value, filter.value) < 0,
+      QueryOperator.lessThanOrEquals => _compare(value, filter.value) <= 0,
+    };
+  }
+
+  int _compare(Object? left, Object? right) {
+    return switch ((left, right)) {
+      (final num left, final num right) => left.compareTo(right),
+      (final String left, final String right) => left.compareTo(right),
+      (final bool left, final bool right) =>
+        left == right
+            ? 0
+            : left
+            ? 1
+            : -1,
+      (final DateTime left, final DateTime right) => left.compareTo(right),
+      _ => left == right ? 0 : -1,
+    };
   }
 }

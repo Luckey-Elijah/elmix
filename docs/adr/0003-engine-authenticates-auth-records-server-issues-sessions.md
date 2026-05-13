@@ -1,0 +1,3 @@
+# Engine Authenticates Auth Records While Server Issues Sessions
+
+Auth Records and Auth Collections are Engine concepts, so email/password credential lookup and password-field hashing for Auth Records belongs in the Engine instead of being implemented through the HTTP Public API's collection list route. The Server owns transport concerns: parsing login requests, omitting password fields from auth responses, issuing bearer session tokens, and resolving only server-issued tokens into Engine request context. This keeps Access Rules and pagination from controlling credential lookup while preventing callers from forging Auth Record identity by shaping a bearer token string or depending on plaintext password storage.
