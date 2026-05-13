@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:elmix_engine/elmix_engine.dart';
 import 'package:elmix_server/elmix_server.dart';
 import 'package:test/test.dart';
@@ -49,6 +51,152 @@ void main() {
           },
         ],
       });
+    });
+
+    test('decodes structured list query payloads', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+            SchemaField(name: 'views', type: FieldType.number),
+            SchemaField(name: 'published', type: FieldType.bool),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        ),
+      );
+
+      final query = jsonEncode(<String, Object?>{
+        'filters': <Object?>[
+          <String, Object?>{
+            'field': 'published',
+            'operator': 'equals',
+            'value': true,
+          },
+          <String, Object?>{
+            'field': 'views',
+            'operator': 'greaterThanOrEquals',
+            'value': 10,
+          },
+        ],
+        'sort': <Object?>[
+          <String, Object?>{
+            'field': 'title',
+            'direction': 'descending',
+          },
+        ],
+        'pagination': <String, Object?>{'page': 2, 'perPage': 10},
+      });
+
+      final response = await server.handle(
+        ElmixHttpRequest(
+          method: 'GET',
+          path: '/api/collections/posts/records?query=$query',
+        ),
+      );
+
+      expect(response.statusCode, 200);
+      expect(storage.lastQuery, isNotNull);
+      expect(storage.lastQuery!.filters, hasLength(2));
+      expect(storage.lastQuery!.filters.first.field, 'published');
+      expect(storage.lastQuery!.filters.first.operator, QueryOperator.equals);
+      expect(storage.lastQuery!.filters.first.value, isTrue);
+      expect(storage.lastQuery!.filters.last.field, 'views');
+      expect(
+        storage.lastQuery!.filters.last.operator,
+        QueryOperator.greaterThanOrEquals,
+      );
+      expect(storage.lastQuery!.sort.single.field, 'title');
+      expect(
+        storage.lastQuery!.sort.single.direction,
+        SortDirection.descending,
+      );
+      expect(storage.lastQuery!.pagination.page, 2);
+      expect(storage.lastQuery!.pagination.perPage, 10);
+    });
+
+    test('authenticates Auth Records and accepts bearer tokens', () async {
+      final storage = MemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      final server = ElmixServer(engine);
+
+      await engine.registerCollection(
+        const CollectionSchema.auth(
+          name: 'members',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'email', type: FieldType.email, required: true),
+            SchemaField(
+              name: 'password',
+              type: FieldType.password,
+              required: true,
+            ),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        ),
+      );
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: FieldType.text, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{
+            CollectionOperation.list: AccessRule(
+              'auth.collection == "members" && auth.id == "member_1"',
+            ),
+          },
+        ),
+      );
+      await engine
+          .collection('members')
+          .create(
+            const Record(
+              collection: 'members',
+              id: RecordIdentifier('member_1'),
+              data: <String, Object?>{
+                'email': 'ada@example.com',
+                'password': 'correct horse',
+              },
+            ),
+          );
+
+      final auth = await server.handle(
+        const ElmixHttpRequest(
+          method: 'POST',
+          path: '/api/collections/members/auth-with-password',
+          body: <String, Object?>{
+            'email': 'ada@example.com',
+            'password': 'correct horse',
+          },
+        ),
+      );
+
+      expect(auth.statusCode, 200);
+      final authBody = auth.body! as Map<String, Object?>;
+      expect(authBody['token'], isA<String>());
+      expect(
+        (authBody['record']! as Map<String, Object?>)['id'],
+        'member_1',
+      );
+
+      final allowed = await server.handle(
+        ElmixHttpRequest(
+          method: 'GET',
+          path: '/api/collections/posts/records',
+          headers: <String, String>{
+            'authorization': 'Bearer ${authBody['token']}',
+          },
+        ),
+      );
+
+      expect(allowed.statusCode, 200);
     });
 
     test('creates, views, updates, and deletes collection records', () async {
@@ -447,6 +595,7 @@ class MemoryStorageAdapter implements StorageAdapter {
   final Map<String, CollectionSchema> _schemas = <String, CollectionSchema>{};
   final Map<String, Map<String, Record>> _records =
       <String, Map<String, Record>>{};
+  QueryExpression? lastQuery;
 
   @override
   Future<void> deleteRecord({
@@ -479,6 +628,7 @@ class MemoryStorageAdapter implements StorageAdapter {
     required String collection,
     QueryExpression query = const QueryExpression(),
   }) async {
+    lastQuery = query;
     final matching = (_records[collection]?.values ?? const <Record>[])
         .toList();
     return RecordPage(

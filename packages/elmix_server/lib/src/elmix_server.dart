@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:elmix_engine/elmix_engine.dart';
 
 /// Server boundary around an [ElmixEngine].
@@ -6,10 +8,12 @@ import 'package:elmix_engine/elmix_engine.dart';
 /// details into the Engine.
 class ElmixServer {
   /// Creates a server boundary backed by [engine].
-  const ElmixServer(this.engine);
+  ElmixServer(this.engine);
 
   /// The engine exposed through this server boundary.
   final ElmixEngine engine;
+  final Map<String, AuthRecordIdentity> _authSessions =
+      <String, AuthRecordIdentity>{};
 
   /// Handles one HTTP-shaped Elmix request.
   Future<ElmixHttpResponse> handle(ElmixHttpRequest request) async {
@@ -89,6 +93,13 @@ class ElmixServer {
       );
     }
 
+    if (_matchesAuthWithPasswordRoute(segments)) {
+      return _handleAuthWithPasswordRoute(
+        request: request,
+        collection: segments[2],
+      );
+    }
+
     if (_matchesRecordsCollectionRoute(segments)) {
       return _handleRecordCollectionRoute(
         request: request,
@@ -115,9 +126,9 @@ class ElmixServer {
       final page = await engine
           .collection(
             collection,
-            context: request.context,
+            context: _requestContext(request),
           )
-          .list();
+          .list(query: _queryExpressionFromRequest(request));
       return ElmixHttpResponse.ok(_recordPageToJson(page));
     }
     if (request.method == 'POST') {
@@ -125,7 +136,7 @@ class ElmixServer {
       final created = await engine
           .collection(
             collection,
-            context: request.context,
+            context: _requestContext(request),
           )
           .create(
             _recordFromJson(
@@ -144,7 +155,10 @@ class ElmixServer {
     required String collection,
     required RecordIdentifier id,
   }) async {
-    final records = engine.collection(collection, context: request.context);
+    final records = engine.collection(
+      collection,
+      context: _requestContext(request),
+    );
     if (request.method == 'GET') {
       final record = await records.get(id);
       if (record == null) {
@@ -188,6 +202,74 @@ class ElmixServer {
     return _notFound();
   }
 
+  Future<ElmixHttpResponse> _handleAuthWithPasswordRoute({
+    required ElmixHttpRequest request,
+    required String collection,
+  }) async {
+    if (request.method != 'POST') {
+      return _notFound();
+    }
+    final schema = await engine.getCollectionSchema(collection);
+    if (schema == null || !schema.isAuthCollection) {
+      return _notFound();
+    }
+
+    final body = request.body is Map<String, Object?>
+        ? request.body! as Map<String, Object?>
+        : const <String, Object?>{};
+    final email = body['email'];
+    final password = body['password'];
+    if (email is! String || password is! String) {
+      return _error(
+        statusCode: 400,
+        code: 'auth_error',
+        message: 'Email and password are required.',
+      );
+    }
+
+    final page = await engine
+        .collection(collection)
+        .list(
+          query: QueryExpression(
+            filters: <QueryFilter>[
+              QueryFilter(
+                field: 'email',
+                operator: QueryOperator.equals,
+                value: email,
+              ),
+              QueryFilter(
+                field: 'password',
+                operator: QueryOperator.equals,
+                value: password,
+              ),
+            ],
+            pagination: const QueryPagination(perPage: 1),
+          ),
+        );
+    if (page.items.isEmpty) {
+      return _error(
+        statusCode: 401,
+        code: 'invalid_credentials',
+        message: 'Auth Record credentials are invalid.',
+      );
+    }
+
+    final record = page.items.single;
+    final authRecord = await engine.runAuthenticationAction(
+      collection: collection,
+      action: AuthenticationOperation.authenticate,
+      run: () async => AuthRecordIdentity(
+        collection: collection,
+        id: record.id,
+      ),
+    );
+    final token = _issueAuthToken(authRecord);
+    return ElmixHttpResponse.ok(<String, Object?>{
+      'token': token,
+      'record': _recordToJson(record),
+    });
+  }
+
   ElmixHttpResponse _error({
     required int statusCode,
     required String code,
@@ -228,6 +310,13 @@ class ElmixServer {
         segments[0] == 'api' &&
         segments[1] == 'collections' &&
         segments[3] == 'records';
+  }
+
+  bool _matchesAuthWithPasswordRoute(List<String> segments) {
+    return segments.length == 4 &&
+        segments[0] == 'api' &&
+        segments[1] == 'collections' &&
+        segments[3] == 'auth-with-password';
   }
 
   bool _matchesAdminCollectionsRoute(List<String> segments) {
@@ -424,6 +513,96 @@ class ElmixServer {
       (operation) => operation.name == name,
     );
   }
+
+  QueryExpression _queryExpressionFromRequest(ElmixHttpRequest request) {
+    final encoded = request.queryParameters['query'];
+    if (encoded == null) {
+      return const QueryExpression();
+    }
+    final decoded = jsonDecode(encoded);
+    final object = decoded is Map<String, Object?>
+        ? decoded
+        : const <String, Object?>{};
+    return QueryExpression(
+      filters: _queryFilters(object['filters']),
+      sort: _querySort(object['sort']),
+      pagination: _queryPagination(object['pagination']),
+    );
+  }
+
+  List<QueryFilter> _queryFilters(Object? value) {
+    if (value is! List<Object?>) {
+      return const <QueryFilter>[];
+    }
+    return value.map((item) {
+      final object = item is Map<String, Object?>
+          ? item
+          : const <String, Object?>{};
+      return QueryFilter(
+        field: object['field']! as String,
+        operator: _queryOperator(object['operator']! as String),
+        value: object['value'],
+      );
+    }).toList();
+  }
+
+  List<QuerySort> _querySort(Object? value) {
+    if (value is! List<Object?>) {
+      return const <QuerySort>[];
+    }
+    return value.map((item) {
+      final object = item is Map<String, Object?>
+          ? item
+          : const <String, Object?>{};
+      return QuerySort(
+        field: object['field']! as String,
+        direction: _sortDirection(object['direction']! as String),
+      );
+    }).toList();
+  }
+
+  QueryPagination _queryPagination(Object? value) {
+    if (value is! Map<String, Object?>) {
+      return const QueryPagination();
+    }
+    return QueryPagination(
+      page: value['page'] is int ? value['page']! as int : 1,
+      perPage: value['perPage'] is int ? value['perPage']! as int : 30,
+    );
+  }
+
+  QueryOperator _queryOperator(String name) {
+    return QueryOperator.values.firstWhere((operator) => operator.name == name);
+  }
+
+  SortDirection _sortDirection(String name) {
+    return SortDirection.values.firstWhere(
+      (direction) => direction.name == name,
+    );
+  }
+
+  String _issueAuthToken(AuthRecordIdentity authRecord) {
+    final tokenData =
+        '${authRecord.collection}:${authRecord.id.value}:'
+        '${_authSessions.length}';
+    final token = base64Url.encode(
+      utf8.encode(tokenData),
+    );
+    _authSessions[token] = authRecord;
+    return token;
+  }
+
+  RequestContext _requestContext(ElmixHttpRequest request) {
+    final authorization = request.headers['authorization'];
+    if (authorization != null && authorization.startsWith('Bearer ')) {
+      final token = authorization.substring('Bearer '.length);
+      final authRecord = _authSessions[token];
+      if (authRecord != null) {
+        return RequestContext(authRecord: authRecord);
+      }
+    }
+    return request.context;
+  }
 }
 
 /// Transport-independent representation of an HTTP request.
@@ -465,9 +644,16 @@ class ElmixHttpRequest {
 
   /// The path split into decoded segments.
   List<String> get pathSegments {
-    return Uri(
-      path: path,
-    ).pathSegments.where((segment) => segment.isNotEmpty).toList();
+    return _uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+  }
+
+  /// The decoded URL query parameters.
+  Map<String, String> get queryParameters {
+    return _uri.queryParameters;
+  }
+
+  Uri get _uri {
+    return Uri.parse(path);
   }
 }
 
