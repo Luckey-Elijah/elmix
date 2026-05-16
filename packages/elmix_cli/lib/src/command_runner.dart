@@ -164,7 +164,7 @@ class _ServeCommand extends args.Command<int> {
     final body = await utf8.decoder.bind(request).join();
     final response = await server.handle(
       ElmixHttpRequest(
-        method: request.method,
+        method: _methodFrom(request.method),
         path: request.uri.path,
         headers: _headersFrom(request.headers),
         body: body.trim().isEmpty ? null : jsonDecode(body),
@@ -184,6 +184,12 @@ class _ServeCommand extends args.Command<int> {
       result[name] = values.join(',');
     });
     return result;
+  }
+
+  ElmixHttpRequestMethod _methodFrom(String method) {
+    return ElmixHttpRequestMethod.values.firstWhere(
+      (candidate) => candidate.value == method,
+    );
   }
 }
 
