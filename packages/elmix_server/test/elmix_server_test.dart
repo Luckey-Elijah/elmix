@@ -92,7 +92,7 @@ void main() {
 
       final response = await server.handle(
         const ElmixHttpRequest(
-          method: 'GET',
+          method: ElmixHttpRequestMethod.get,
           path: '/api/collections/_admins/records',
         ),
       );
