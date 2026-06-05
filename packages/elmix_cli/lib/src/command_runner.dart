@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:args/args.dart' as args_parser;
 import 'package:args/command_runner.dart' as args;
 import 'package:elmix_admin/elmix_admin.dart';
 import 'package:elmix_engine/elmix_engine.dart';
@@ -48,6 +49,13 @@ class ElmixCommandRunner {
   /// Returns the command-line usage text.
   String usage() => _runner.usage;
 
+  /// Starts `elmix serve` and returns a handle that can close the server.
+  Future<ElmixServeHandle> startServe(List<String> arguments) async {
+    final command = _ServeCommand(this);
+    final results = command.argParser.parse(arguments);
+    return command.start(results);
+  }
+
   /// Runs the CLI and returns its process exit code.
   Future<int> run(List<String> arguments) async {
     final result = await runWithResult(arguments);
@@ -93,6 +101,23 @@ class ElmixCommandRunner {
   }
 }
 
+/// A running `elmix serve` instance.
+class ElmixServeHandle {
+  /// Creates a running serve handle.
+  const ElmixServeHandle({
+    required this.url,
+    required Future<void> Function() close,
+  }) : _close = close;
+
+  /// Base URL for the served Elmix app.
+  final Uri url;
+
+  final Future<void> Function() _close;
+
+  /// Closes the HTTP server and SQLite storage backing this app.
+  Future<void> close() => _close();
+}
+
 class _ServeCommand extends args.Command<int> {
   _ServeCommand(this._elmix) {
     argParser
@@ -120,32 +145,46 @@ class _ServeCommand extends args.Command<int> {
 
   @override
   Future<int> run() async {
+    final served = await start(argResults!);
+
+    if (argResults!['exit-after-start'] == true) {
+      await served.close();
+      return ExitCode.success.code;
+    }
+
+    await Completer<void>().future;
+    return ExitCode.success.code;
+  }
+
+  Future<ElmixServeHandle> start(args_parser.ArgResults results) async {
     final databasePath = _resolveCliPath(
       _elmix._workingDirectory,
-      argResults!['db']! as String,
+      results['db']! as String,
     );
-    final host = argResults!['host']! as String;
-    final port = int.parse(argResults!['port']! as String);
+    final host = results['host']! as String;
+    final port = int.parse(results['port']! as String);
     final storage = SqliteStorageAdapter.open(databasePath);
     final engine = ElmixEngine(storage: storage);
     final server = ElmixServer(engine);
     final httpServer = await HttpServer.bind(host, port);
+    final url = Uri(
+      scheme: 'http',
+      host: httpServer.address.host,
+      port: httpServer.port,
+    );
 
     _elmix
-      .._success(
-        'Serving Elmix at http://${httpServer.address.host}:${httpServer.port}.',
-      )
+      .._success('Serving Elmix at $url.')
       .._info('SQLite database: $databasePath');
 
-    if (argResults!['exit-after-start'] == true) {
-      await httpServer.close(force: true);
-      storage.close();
-      return ExitCode.success.code;
-    }
-
     unawaited(_handleRequests(httpServer, server));
-    await Completer<void>().future;
-    return ExitCode.success.code;
+    return ElmixServeHandle(
+      url: url,
+      close: () async {
+        await httpServer.close(force: true);
+        storage.close();
+      },
+    );
   }
 
   Future<void> _handleRequests(
@@ -178,18 +217,18 @@ class _ServeCommand extends args.Command<int> {
     await request.response.close();
   }
 
+  ElmixHttpRequestMethod _methodFrom(String method) {
+    return ElmixHttpRequestMethod.values.firstWhere(
+      (candidate) => candidate.value == method,
+    );
+  }
+
   Map<String, String> _headersFrom(HttpHeaders headers) {
     final result = <String, String>{};
     headers.forEach((name, values) {
       result[name] = values.join(',');
     });
     return result;
-  }
-
-  ElmixHttpRequestMethod _methodFrom(String method) {
-    return ElmixHttpRequestMethod.values.firstWhere(
-      (candidate) => candidate.value == method,
-    );
   }
 }
 
