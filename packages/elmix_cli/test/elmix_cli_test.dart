@@ -214,6 +214,31 @@ void main() {
       expect(File(databasePath).existsSync(), true);
     });
 
+    test('returns a valid serve URL for IPv6 hosts', () async {
+      final directory = Directory.systemTemp.createTempSync(
+        'elmix_cli_serve_ipv6_test_',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final databasePath = '${directory.path}/elmix.db';
+
+      final served =
+          await ElmixCommandRunner(
+            workingDirectory: directory,
+          ).startServe(<String>[
+            '--db',
+            databasePath,
+            '--host',
+            '::1',
+            '--port',
+            '0',
+          ]);
+      addTearDown(served.close);
+
+      expect(served.url.scheme, 'http');
+      expect(served.url.host, '::1');
+      expect(served.url.toString(), startsWith('http://[::1]:'));
+    });
+
     test('serves a SQLite-backed app consumed by the Dynamic Client', () async {
       final directory = Directory.systemTemp.createTempSync(
         'elmix_cli_dynamic_client_test_',

@@ -167,18 +167,19 @@ class _ServeCommand extends args.Command<int> {
     final engine = ElmixEngine(storage: storage);
     final server = ElmixServer(engine);
     final httpServer = await HttpServer.bind(host, port);
+    final url = Uri(
+      scheme: 'http',
+      host: httpServer.address.host,
+      port: httpServer.port,
+    );
 
     _elmix
-      .._success(
-        'Serving Elmix at http://${httpServer.address.host}:${httpServer.port}.',
-      )
+      .._success('Serving Elmix at $url.')
       .._info('SQLite database: $databasePath');
 
     unawaited(_handleRequests(httpServer, server));
     return ElmixServeHandle(
-      url: Uri.parse(
-        'http://${httpServer.address.host}:${httpServer.port}',
-      ),
+      url: url,
       close: () async {
         await httpServer.close(force: true);
         storage.close();
