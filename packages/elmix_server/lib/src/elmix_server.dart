@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:elmix_engine/elmix_engine.dart';
 
 /// Server boundary around an [ElmixEngine].
@@ -229,10 +232,11 @@ class ElmixServer {
       return _notFound();
     }
 
-    final token = 'record-session:${record.collection}:${record.id.value}';
-    _authRecordSessions[token] = AuthRecordIdentity(
-      collection: record.collection,
-      id: record.id,
+    final token = _issueAuthRecordToken(
+      AuthRecordIdentity(
+        collection: record.collection,
+        id: record.id,
+      ),
     );
     return ElmixHttpResponse.ok(<String, Object?>{
       'token': token,
@@ -246,9 +250,11 @@ class ElmixServer {
   }) async {
     if (request.method == .get) {
       final page = await engine
-          .collection(collection, context: _contextForRequest(request))
-          .list();
-
+          .collection(
+            collection,
+            context: _contextForRequest(request),
+          )
+          .list(query: await _queryExpressionFromRequest(request, collection));
       return ElmixHttpResponse.ok(_recordPageToJson(page));
     }
     if (request.method == .post) {
@@ -552,6 +558,95 @@ class ElmixServer {
       (operation) => operation.name == name,
     );
   }
+
+  Future<QueryExpression> _queryExpressionFromRequest(
+    ElmixHttpRequest request,
+    String collection,
+  ) async {
+    final encoded = request.queryParameters['query'];
+    if (encoded == null) {
+      return const QueryExpression();
+    }
+    final decoded = jsonDecode(encoded);
+    final object = decoded is Map<String, Object?>
+        ? decoded
+        : const <String, Object?>{};
+    final schema = await engine.getCollectionSchema(collection);
+    return QueryExpression(
+      filters: _queryFilters(object['filters'], schema: schema),
+      sort: _querySort(object['sort']),
+      pagination: _queryPagination(object['pagination']),
+    );
+  }
+
+  List<QueryFilter> _queryFilters(
+    Object? value, {
+    required CollectionSchema? schema,
+  }) {
+    if (value is! List<Object?>) {
+      return const <QueryFilter>[];
+    }
+    final dateFields = <String>{
+      for (final field in schema?.fields ?? const <SchemaField>[])
+        if (field.type == FieldType.date) field.name,
+    };
+    return value.map((item) {
+      final object = item is Map<String, Object?>
+          ? item
+          : const <String, Object?>{};
+      final field = object['field']! as String;
+      return QueryFilter(
+        field: field,
+        operator: _queryOperator(object['operator']! as String),
+        value: dateFields.contains(field)
+            ? _decodeDateField(field, object['value'])
+            : object['value'],
+      );
+    }).toList();
+  }
+
+  List<QuerySort> _querySort(Object? value) {
+    if (value is! List<Object?>) {
+      return const <QuerySort>[];
+    }
+    return value.map((item) {
+      final object = item is Map<String, Object?>
+          ? item
+          : const <String, Object?>{};
+      return QuerySort(
+        field: object['field']! as String,
+        direction: _sortDirection(object['direction']! as String),
+      );
+    }).toList();
+  }
+
+  QueryPagination _queryPagination(Object? value) {
+    if (value is! Map<String, Object?>) {
+      return const QueryPagination();
+    }
+    return QueryPagination(
+      page: value['page'] is int ? value['page']! as int : 1,
+      perPage: value['perPage'] is int ? value['perPage']! as int : 30,
+    );
+  }
+
+  QueryOperator _queryOperator(String name) {
+    return QueryOperator.values.firstWhere((operator) => operator.name == name);
+  }
+
+  SortDirection _sortDirection(String name) {
+    return SortDirection.values.firstWhere(
+      (direction) => direction.name == name,
+    );
+  }
+
+  String _issueAuthRecordToken(AuthRecordIdentity authRecord) {
+    final random = Random.secure();
+    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+    final token = base64UrlEncode(bytes);
+    _authRecordSessions[token] = authRecord;
+    return token;
+  }
 }
 
 /// Admin Account credentials known to the server boundary.
@@ -659,9 +754,16 @@ class ElmixHttpRequest {
 
   /// The path split into decoded segments.
   List<String> get pathSegments {
-    return Uri(
-      path: path,
-    ).pathSegments.where((segment) => segment.isNotEmpty).toList();
+    return _uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+  }
+
+  /// The decoded URL query parameters.
+  Map<String, String> get queryParameters {
+    return _uri.queryParameters;
+  }
+
+  Uri get _uri {
+    return Uri.parse(path);
   }
 }
 

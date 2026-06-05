@@ -277,12 +277,10 @@ void main() {
       final users = client.collection('users');
       final posts = client.collection('posts');
 
-      final user = await users.create(<String, Object?>{
+      final user = await users.create(const <String, Object?>{
         'id': 'author-1',
-        'data': <String, Object?>{
-          'email': 'author@example.com',
-          'password': 'secret-password',
-        },
+        'email': 'author@example.com',
+        'password': 'secret-password',
       });
       expect(user.id, 'author-1');
 
@@ -293,23 +291,22 @@ void main() {
       expect(auth.record.id, 'author-1');
       expect(client.bearerToken, auth.token);
 
-      final created = await posts.create(<String, Object?>{
+      final created = await posts.create(const <String, Object?>{
         'id': 'post-1',
-        'data': <String, Object?>{
-          'title': 'First CLI-served post',
-          'published': false,
-        },
+        'title': 'First CLI-served post',
+        'published': false,
       });
       expect(created.data['title'], 'First CLI-served post');
 
-      final page = await posts.list();
+      final page = await posts.list().send();
       expect(page.items.map((record) => record.id), contains('post-1'));
 
       final viewed = await posts.view('post-1');
       expect(viewed.data['published'], false);
 
-      final updated = await posts.update('post-1', <String, Object?>{
-        'data': <String, Object?>{'published': true},
+      final updated = await posts.update('post-1', const <String, Object?>{
+        'title': 'First CLI-served post',
+        'published': true,
       });
       expect(updated.data['published'], true);
 
