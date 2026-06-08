@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:elmix_engine/elmix_engine.dart';
 
 /// Server boundary around an [ElmixEngine].
@@ -106,7 +108,7 @@ class ElmixServer {
       if (request.method == .post) return _authenticateAdmin(request);
     }
     if (adminSegments case ['collections']) {
-      final adminRequired = _requireAdminSession(request);
+      final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
@@ -124,7 +126,7 @@ class ElmixServer {
     }
 
     if (adminSegments case ['collections', final collection]) {
-      final adminRequired = _requireAdminSession(request);
+      final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
@@ -144,7 +146,7 @@ class ElmixServer {
     }
 
     if (adminSegments case ['collections', final collection, 'records']) {
-      final adminRequired = _requireAdminSession(request);
+      final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
@@ -160,7 +162,7 @@ class ElmixServer {
       'records',
       final id,
     ]) {
-      final adminRequired = _requireAdminSession(request);
+      final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) return adminRequired;
       return _handleRecordRoute(
         request: request,
@@ -171,7 +173,7 @@ class ElmixServer {
     return null;
   }
 
-  ElmixHttpResponse _authenticateAdmin(ElmixHttpRequest request) {
+  Future<ElmixHttpResponse> _authenticateAdmin(ElmixHttpRequest request) async {
     final object = request.body is Map<String, Object?>
         ? request.body! as Map<String, Object?>
         : const <String, Object?>{};
@@ -180,7 +182,19 @@ class ElmixServer {
     final account = _adminAccounts.where(
       (candidate) => candidate.email == email && candidate.password == password,
     );
-    if (account.isEmpty) {
+    final configuredAdmin = account.isEmpty
+        ? null
+        : AdminAccount(
+            id: account.first.id,
+            email: account.first.email,
+          );
+    final internalAdmin =
+        configuredAdmin ??
+        await _authenticateInternalAdminAccount(
+          email: email is String ? email : '',
+          password: password is String ? password : '',
+        );
+    if (internalAdmin == null) {
       return _error(
         statusCode: 401,
         code: 'invalid_credentials',
@@ -188,10 +202,7 @@ class ElmixServer {
       );
     }
 
-    final admin = AdminAccount(
-      id: account.first.id,
-      email: account.first.email,
-    );
+    final admin = internalAdmin;
     final token = 'admin:${admin.id.value}';
     _adminSessions[token] = admin;
     return ElmixHttpResponse.ok(<String, Object?>{
@@ -201,6 +212,41 @@ class ElmixServer {
         'email': admin.email,
       },
     });
+  }
+
+  Future<AdminAccount?> _authenticateInternalAdminAccount({
+    required String email,
+    required String password,
+  }) async {
+    final schema = await engine.getCollectionSchema('_admins');
+    if (schema == null) {
+      return null;
+    }
+    final page = await engine
+        .collection('_admins', context: RequestContext.system)
+        .list(
+          query: QueryExpression(
+            filters: <QueryFilter>[
+              QueryFilter(
+                field: 'email',
+                operator: .equals,
+                value: email,
+              ),
+            ],
+          ),
+        );
+    for (final record in page.items) {
+      if (_verifyAdminPassword(
+        password: password,
+        stored: record.data['passwordHash'],
+      )) {
+        return AdminAccount(
+          id: AdminAccountIdentifier(record.id.value),
+          email: record.data['email']! as String,
+        );
+      }
+    }
+    return null;
   }
 
   Future<ElmixHttpResponse> _authenticateAuthRecord({
@@ -328,8 +374,10 @@ class ElmixServer {
     return _notFound();
   }
 
-  ElmixHttpResponse? _requireAdminSession(ElmixHttpRequest request) {
-    if (_adminAccounts.isEmpty || _adminFromBearer(request) != null) {
+  Future<ElmixHttpResponse?> _requireAdminSession(
+    ElmixHttpRequest request,
+  ) async {
+    if (!await _hasAdminAccounts() || _adminFromBearer(request) != null) {
       return null;
     }
     return _error(
@@ -337,6 +385,22 @@ class ElmixServer {
       code: 'admin_session_required',
       message: 'An Admin Account session is required.',
     );
+  }
+
+  Future<bool> _hasAdminAccounts() async {
+    if (_adminAccounts.isNotEmpty) {
+      return true;
+    }
+    final schema = await engine.getCollectionSchema('_admins');
+    if (schema == null) {
+      return false;
+    }
+    final page = await engine
+        .collection('_admins', context: RequestContext.system)
+        .list(
+          query: const QueryExpression(pagination: QueryPagination(perPage: 1)),
+        );
+    return page.totalItems > 0;
   }
 
   AdminAccount? _adminFromBearer(ElmixHttpRequest request) {
@@ -646,6 +710,72 @@ class ElmixServer {
     final token = base64UrlEncode(bytes);
     _authRecordSessions[token] = authRecord;
     return token;
+  }
+
+  bool _verifyAdminPassword({
+    required String password,
+    required Object? stored,
+  }) {
+    if (stored is! String) {
+      return false;
+    }
+    final parts = stored.split(r'$');
+    if (parts.length != 4 || parts.first != 'pbkdf2-sha256') {
+      return false;
+    }
+    final iterations = int.tryParse(parts[1]);
+    if (iterations == null) {
+      return false;
+    }
+    final salt = base64Url.decode(parts[2]);
+    final expected = base64Url.decode(parts[3]);
+    final actual = _pbkdf2Sha256(
+      password: utf8.encode(password),
+      salt: salt,
+      iterations: iterations,
+      length: expected.length,
+    );
+    return _constantTimeEquals(actual, expected);
+  }
+
+  List<int> _pbkdf2Sha256({
+    required List<int> password,
+    required List<int> salt,
+    required int iterations,
+    required int length,
+  }) {
+    final hmac = Hmac(sha256, password);
+    final blocks = <int>[];
+    var blockIndex = 1;
+    while (blocks.length < length) {
+      final blockIndexBytes = ByteData(4)..setUint32(0, blockIndex);
+      var block = hmac.convert([
+        ...salt,
+        for (var index = 0; index < blockIndexBytes.lengthInBytes; index += 1)
+          blockIndexBytes.getUint8(index),
+      ]).bytes;
+      final output = List<int>.from(block);
+      for (var round = 1; round < iterations; round += 1) {
+        block = hmac.convert(block).bytes;
+        for (var index = 0; index < output.length; index += 1) {
+          output[index] ^= block[index];
+        }
+      }
+      blocks.addAll(output);
+      blockIndex += 1;
+    }
+    return blocks.take(length).toList();
+  }
+
+  bool _constantTimeEquals(List<int> left, List<int> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+    var difference = 0;
+    for (var index = 0; index < left.length; index += 1) {
+      difference |= left[index] ^ right[index];
+    }
+    return difference == 0;
   }
 }
 

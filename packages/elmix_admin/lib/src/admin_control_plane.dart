@@ -1,113 +1,529 @@
-import 'dart:convert';
-import 'dart:math';
-import 'dart:typed_data';
-
-import 'package:crypto/crypto.dart';
 import 'package:elmix_engine/elmix_engine.dart';
 
-/// Boundary for the Admin Control Plane.
+/// Admin-facing application boundary backed by the Admin API.
 class AdminControlPlane {
-  /// Creates an admin control plane backed by [engine].
-  const AdminControlPlane(this.engine);
+  /// Creates an Admin Control Plane using [api].
+  const AdminControlPlane(this.api);
 
-  /// The engine managed by this admin boundary.
-  final ElmixEngine engine;
+  /// Admin API client used by this control plane.
+  final AdminApiClient api;
 
-  /// Creates an Admin Account in the built-in admin auth collection.
-  Future<Record> createAdminAccount({
+  /// Authenticates an Admin Account through the Admin API.
+  Future<AdminSession> login({
     required String email,
     required String password,
-  }) async {
-    await _ensureAdminCollection();
-    final admin = AuthRecord(
-      collection: '_admins',
-      id: RecordIdentifier(email),
-      data: <String, Object?>{
-        'email': email,
-        'passwordHash': _passwordHash(password),
-      },
-    );
-    return engine
-        .collection('_admins', context: RequestContext.system)
-        .create(admin);
+  }) {
+    return api.authWithPassword(email: email, password: password);
   }
 
-  Future<void> _ensureAdminCollection() async {
-    final existing = await engine.getCollectionSchema('_admins');
-    if (existing != null) {
-      return;
-    }
-    await engine.registerCollection(
-      const CollectionSchema.auth(
-        name: '_admins',
-        fields: <SchemaField>[
-          SchemaField.recordIdentifier(),
-          SchemaField(name: 'email', type: .email, required: true),
-          SchemaField(
-            name: 'passwordHash',
-            type: .password,
-            required: true,
-          ),
-        ],
-        accessRules: <CollectionOperation, AccessRule>{
-          .list: AccessRule('false'),
-          .view: AccessRule('false'),
-          .create: AccessRule('false'),
-          .update: AccessRule('false'),
-          .delete: AccessRule('false'),
-        },
+  /// Lists Collection Schemas through the Admin API.
+  Future<List<CollectionSchema>> listCollectionSchemas() {
+    return api.listCollectionSchemas();
+  }
+
+  /// Creates a Collection Schema through the Admin API.
+  Future<CollectionSchema> createCollectionSchema(CollectionSchema schema) {
+    return api.createCollectionSchema(schema);
+  }
+
+  /// Updates a Collection Schema through the Admin API.
+  Future<CollectionSchema> updateCollectionSchema(CollectionSchema schema) {
+    return api.updateCollectionSchema(schema);
+  }
+
+  /// Creates a field by updating its owning Collection Schema.
+  Future<CollectionSchema> createSchemaField({
+    required String collection,
+    required SchemaField field,
+  }) async {
+    final schema = await api.getCollectionSchema(collection);
+    return api.updateCollectionSchema(
+      CollectionSchema(
+        name: schema.name,
+        isAuthCollection: schema.isAuthCollection,
+        fields: <SchemaField>[...schema.fields, field],
+        accessRules: schema.accessRules,
       ),
     );
   }
 
-  String _passwordHash(String password) {
-    const iterations = 120000;
-    final salt = _randomBytes(16);
-    final hash = _pbkdf2Sha256(
-      password: utf8.encode(password),
-      salt: salt,
-      iterations: iterations,
-      length: 32,
+  /// Deletes a field by updating its owning Collection Schema.
+  Future<CollectionSchema> deleteSchemaField({
+    required String collection,
+    required String field,
+  }) async {
+    final schema = await api.getCollectionSchema(collection);
+    return api.updateCollectionSchema(
+      CollectionSchema(
+        name: schema.name,
+        isAuthCollection: schema.isAuthCollection,
+        fields: <SchemaField>[
+          for (final existing in schema.fields)
+            if (existing.name != field) existing,
+        ],
+        accessRules: schema.accessRules,
+      ),
     );
-    return [
-      'pbkdf2-sha256',
-      iterations,
-      base64UrlEncode(salt),
-      base64UrlEncode(hash),
-    ].join(r'$');
   }
 
-  List<int> _randomBytes(int length) {
-    final random = Random.secure();
-    return List<int>.generate(length, (_) => random.nextInt(256));
+  /// Updates Access Rules by updating their owning Collection Schema.
+  Future<CollectionSchema> updateAccessRules({
+    required String collection,
+    required Map<CollectionOperation, AccessRule> accessRules,
+  }) async {
+    final schema = await api.getCollectionSchema(collection);
+    return api.updateCollectionSchema(
+      CollectionSchema(
+        name: schema.name,
+        isAuthCollection: schema.isAuthCollection,
+        fields: schema.fields,
+        accessRules: accessRules,
+      ),
+    );
   }
 
-  List<int> _pbkdf2Sha256({
-    required List<int> password,
-    required List<int> salt,
-    required int iterations,
-    required int length,
+  /// Lists records for [collection] through the Admin API.
+  Future<RecordPage> listRecords(String collection) {
+    return api.listRecords(collection);
+  }
+
+  /// Creates a record through the Admin API.
+  Future<Record> createRecord(Record record) {
+    return api.createRecord(record);
+  }
+
+  /// Views a record through the Admin API.
+  Future<Record?> viewRecord({
+    required String collection,
+    required RecordIdentifier id,
   }) {
-    final hmac = Hmac(sha256, password);
-    final blocks = <int>[];
-    var blockIndex = 1;
-    while (blocks.length < length) {
-      final blockIndexBytes = ByteData(4)..setUint32(0, blockIndex);
-      var block = hmac.convert([
-        ...salt,
-        for (var index = 0; index < blockIndexBytes.lengthInBytes; index += 1)
-          blockIndexBytes.getUint8(index),
-      ]).bytes;
-      final output = List<int>.from(block);
-      for (var round = 1; round < iterations; round += 1) {
-        block = hmac.convert(block).bytes;
-        for (var index = 0; index < output.length; index += 1) {
-          output[index] ^= block[index];
-        }
-      }
-      blocks.addAll(output);
-      blockIndex += 1;
-    }
-    return blocks.take(length).toList();
+    return api.viewRecord(collection: collection, id: id);
   }
+
+  /// Updates a record through the Admin API.
+  Future<Record> updateRecord(Record record) {
+    return api.updateRecord(record);
+  }
+
+  /// Deletes a record through the Admin API.
+  Future<void> deleteRecord({
+    required String collection,
+    required RecordIdentifier id,
+  }) {
+    return api.deleteRecord(collection: collection, id: id);
+  }
+}
+
+/// Client for the Elmix Admin API.
+class AdminApiClient {
+  /// Creates an Admin API client.
+  AdminApiClient({
+    required this.baseUrl,
+    required this.transport,
+  });
+
+  /// Base URL for the Elmix server.
+  final Uri baseUrl;
+
+  /// Transport used to send Admin API requests.
+  final AdminApiTransport transport;
+
+  String? _bearerToken;
+
+  /// Bearer token used for Admin API requests, if authenticated.
+  String? get bearerToken => _bearerToken;
+
+  /// Authenticates an Admin Account by email and password.
+  Future<AdminSession> authWithPassword({
+    required String email,
+    required String password,
+  }) async {
+    final response = await _send(
+      method: 'POST',
+      path: '/api/admin/auth-with-password',
+      body: <String, Object?>{
+        'email': email,
+        'password': password,
+      },
+    );
+    final session = AdminSession.fromJson(_expectObject(response));
+    _bearerToken = session.token;
+    return session;
+  }
+
+  /// Lists Collection Schemas.
+  Future<List<CollectionSchema>> listCollectionSchemas() async {
+    final response = await _send(method: 'GET', path: '/api/admin/collections');
+    final object = _expectObject(response);
+    final items = object['items'];
+    if (items is! List<Object?>) {
+      return const <CollectionSchema>[];
+    }
+    return items.map(_schemaFromJson).toList();
+  }
+
+  /// Fetches one Collection Schema.
+  Future<CollectionSchema> getCollectionSchema(String collection) async {
+    final response = await _send(
+      method: 'GET',
+      path: '/api/admin/collections/$collection',
+    );
+    return _schemaFromJson(_expectObject(response));
+  }
+
+  /// Creates a Collection Schema.
+  Future<CollectionSchema> createCollectionSchema(
+    CollectionSchema schema,
+  ) async {
+    final response = await _send(
+      method: 'POST',
+      path: '/api/admin/collections',
+      body: _schemaToJson(schema),
+    );
+    return _schemaFromJson(_expectObject(response));
+  }
+
+  /// Updates a Collection Schema.
+  Future<CollectionSchema> updateCollectionSchema(
+    CollectionSchema schema,
+  ) async {
+    final response = await _send(
+      method: 'PUT',
+      path: '/api/admin/collections/${schema.name}',
+      body: _schemaToJson(schema),
+    );
+    return _schemaFromJson(_expectObject(response));
+  }
+
+  /// Lists records in [collection].
+  Future<RecordPage> listRecords(String collection) async {
+    final response = await _send(
+      method: 'GET',
+      path: '/api/admin/collections/$collection/records',
+    );
+    return _recordPageFromJson(_expectObject(response));
+  }
+
+  /// Creates [record].
+  Future<Record> createRecord(Record record) async {
+    final response = await _send(
+      method: 'POST',
+      path: '/api/admin/collections/${record.collection}/records',
+      body: _recordToJson(record),
+    );
+    return _recordFromJson(_expectObject(response));
+  }
+
+  /// Views one record.
+  Future<Record?> viewRecord({
+    required String collection,
+    required RecordIdentifier id,
+  }) async {
+    final response = await _send(
+      method: 'GET',
+      path: '/api/admin/collections/$collection/records/${id.value}',
+    );
+    if (response.statusCode == 404) {
+      return null;
+    }
+    return _recordFromJson(_expectObject(response));
+  }
+
+  /// Updates [record].
+  Future<Record> updateRecord(Record record) async {
+    final response = await _send(
+      method: 'PATCH',
+      path:
+          '/api/admin/collections/${record.collection}/records/'
+          '${record.id.value}',
+      body: _recordToJson(record),
+    );
+    return _recordFromJson(_expectObject(response));
+  }
+
+  /// Deletes one record.
+  Future<void> deleteRecord({
+    required String collection,
+    required RecordIdentifier id,
+  }) async {
+    final response = await _send(
+      method: 'DELETE',
+      path: '/api/admin/collections/$collection/records/${id.value}',
+    );
+    _expectEmpty(response);
+  }
+
+  Future<AdminApiResponse> _send({
+    required String method,
+    required String path,
+    Object? body,
+  }) {
+    return transport.send(
+      AdminApiRequest(
+        method: method,
+        url: baseUrl.replace(path: path),
+        headers: <String, String>{
+          if (_bearerToken != null) 'authorization': 'Bearer $_bearerToken',
+        },
+        body: body,
+      ),
+    );
+  }
+}
+
+/// Authenticated Admin Account session returned by the Admin API.
+class AdminSession {
+  /// Creates an Admin Account session.
+  const AdminSession({
+    required this.token,
+    required this.admin,
+  });
+
+  /// Creates a session from Admin API JSON.
+  factory AdminSession.fromJson(Map<String, Object?> json) {
+    return AdminSession(
+      token: json['token']! as String,
+      admin: AdminAccountView.fromJson(json['admin']),
+    );
+  }
+
+  /// Bearer token for subsequent Admin API requests.
+  final String token;
+
+  /// Authenticated Admin Account.
+  final AdminAccountView admin;
+}
+
+/// Admin Account view returned by the Admin API.
+class AdminAccountView {
+  /// Creates an Admin Account view.
+  const AdminAccountView({
+    required this.id,
+    required this.email,
+  });
+
+  /// Creates an Admin Account view from Admin API JSON.
+  factory AdminAccountView.fromJson(Object? value) {
+    final json = value is Map<String, Object?> ? value : <String, Object?>{};
+    return AdminAccountView(
+      id: json['id']! as String,
+      email: json['email']! as String,
+    );
+  }
+
+  /// Stable Admin Account identifier.
+  final String id;
+
+  /// Admin Account email address.
+  final String email;
+}
+
+/// Transport request emitted by the Admin API client.
+class AdminApiRequest {
+  /// Creates an Admin API request.
+  const AdminApiRequest({
+    required this.method,
+    required this.url,
+    this.headers = const <String, String>{},
+    this.body,
+  });
+
+  /// Uppercase HTTP method.
+  final String method;
+
+  /// Fully resolved Admin API URL.
+  final Uri url;
+
+  /// Request headers.
+  final Map<String, String> headers;
+
+  /// JSON request body, when present.
+  final Object? body;
+}
+
+/// Transport response returned to the Admin API client.
+class AdminApiResponse {
+  /// Creates an Admin API response.
+  const AdminApiResponse({
+    required this.statusCode,
+    this.body,
+  });
+
+  /// HTTP status code returned by the Admin API.
+  final int statusCode;
+
+  /// Decoded response body.
+  final Object? body;
+}
+
+/// Transport boundary used by the Admin API client.
+class AdminApiTransport {
+  /// Creates an Admin API transport.
+  const AdminApiTransport();
+
+  /// Sends [request] and returns a decoded response.
+  Future<AdminApiResponse> send(AdminApiRequest request) {
+    throw UnimplementedError('AdminApiTransport.send');
+  }
+}
+
+/// Error returned when an Admin API request is unsuccessful.
+class AdminApiException implements Exception {
+  /// Creates an Admin API exception.
+  const AdminApiException(this.response);
+
+  /// The unsuccessful response.
+  final AdminApiResponse response;
+
+  /// HTTP status code returned by the Admin API.
+  int get statusCode => response.statusCode;
+
+  /// Elmix-owned error code, when present.
+  String? get code => _errorField('code');
+
+  /// Elmix-owned error message, when present.
+  String? get message => _errorField('message');
+
+  @override
+  String toString() {
+    return 'AdminApiException: request failed with '
+        'status $statusCode'
+        '${code == null ? '' : ' ($code)'}'
+        '${message == null ? '' : ': $message'}';
+  }
+
+  String? _errorField(String name) {
+    final body = response.body;
+    if (body is! Map<String, Object?>) {
+      return null;
+    }
+    final error = body['error'];
+    if (error is! Map<String, Object?>) {
+      return null;
+    }
+    final value = error[name];
+    return value is String ? value : null;
+  }
+}
+
+Map<String, Object?> _schemaToJson(CollectionSchema schema) {
+  return <String, Object?>{
+    'name': schema.name,
+    'isAuthCollection': schema.isAuthCollection,
+    'fields': schema.fields.map(_fieldToJson).toList(),
+    'accessRules': <String, Object?>{
+      for (final entry in schema.accessRules.entries)
+        entry.key.name: entry.value.expression,
+    },
+  };
+}
+
+CollectionSchema _schemaFromJson(Object? value) {
+  final json = value is Map<String, Object?> ? value : <String, Object?>{};
+  final fields = json['fields'];
+  final accessRules = json['accessRules'];
+  return CollectionSchema(
+    name: json['name']! as String,
+    isAuthCollection: json['isAuthCollection'] == true,
+    fields: fields is List<Object?>
+        ? fields.map(_fieldFromJson).toList()
+        : const <SchemaField>[],
+    accessRules: accessRules is Map<String, Object?>
+        ? <CollectionOperation, AccessRule>{
+            for (final entry in accessRules.entries)
+              _collectionOperation(entry.key): AccessRule(
+                entry.value is String ? entry.value! as String : '',
+              ),
+          }
+        : const <CollectionOperation, AccessRule>{},
+  );
+}
+
+Map<String, Object?> _fieldToJson(SchemaField field) {
+  return <String, Object?>{
+    'name': field.name,
+    'type': field.type.name,
+    'required': field.required,
+    'removable': field.removable,
+    'systemRole': field.systemRole.name,
+    if (field.targetCollection != null)
+      'targetCollection': field.targetCollection,
+  };
+}
+
+SchemaField _fieldFromJson(Object? value) {
+  final json = value is Map<String, Object?> ? value : <String, Object?>{};
+  final removable = json['removable'];
+  final systemRole = json['systemRole'];
+  return SchemaField(
+    name: json['name']! as String,
+    type: FieldType.values.firstWhere(
+      (type) => type.name == json['type']! as String,
+    ),
+    required: json['required'] == true,
+    removable: removable is! bool || removable,
+    systemRole: systemRole is String
+        ? FieldSystemRole.values.firstWhere((role) => role.name == systemRole)
+        : .none,
+    targetCollection: json['targetCollection'] as String?,
+  );
+}
+
+Map<String, Object?> _recordToJson(Record record) {
+  return <String, Object?>{
+    'id': record.id.value,
+    'data': _jsonValue(record.data),
+  };
+}
+
+Record _recordFromJson(Object? value) {
+  final json = value is Map<String, Object?> ? value : <String, Object?>{};
+  final data = json['data'];
+  return Record(
+    collection: json['collection']! as String,
+    id: RecordIdentifier(json['id']! as String),
+    data: data is Map<String, Object?> ? data : const <String, Object?>{},
+  );
+}
+
+RecordPage _recordPageFromJson(Map<String, Object?> json) {
+  final items = json['items'];
+  return RecordPage(
+    items: items is List<Object?>
+        ? items.map(_recordFromJson).toList()
+        : const <Record>[],
+    page: json['page']! as int,
+    perPage: json['perPage']! as int,
+    totalItems: json['totalItems']! as int,
+  );
+}
+
+CollectionOperation _collectionOperation(String name) {
+  return CollectionOperation.values.firstWhere(
+    (operation) => operation.name == name,
+  );
+}
+
+Object? _jsonValue(Object? value) => switch (value) {
+  final DateTime date => date.toUtc().toIso8601String(),
+  final Map<String, Object?> map => <String, Object?>{
+    for (final entry in map.entries) entry.key: _jsonValue(entry.value),
+  },
+  final List<Object?> list => list.map(_jsonValue).toList(),
+  _ => value,
+};
+
+Map<String, Object?> _expectObject(AdminApiResponse response) {
+  final body = response.body;
+  if (body is Map<String, Object?> && response.statusCode < 400) {
+    return body;
+  }
+  throw AdminApiException(response);
+}
+
+void _expectEmpty(AdminApiResponse response) {
+  if (response.statusCode < 400) {
+    return;
+  }
+  throw AdminApiException(response);
 }

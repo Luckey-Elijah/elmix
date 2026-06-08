@@ -93,7 +93,7 @@ void main() {
   });
 
   group('elmix admin create', () {
-    test('creates an Admin Account through the control plane', () async {
+    test('creates an Admin Account through Admin Bootstrap', () async {
       final directory = Directory.systemTemp.createTempSync(
         'elmix_cli_admin_test_',
       );
@@ -124,7 +124,7 @@ void main() {
       addTearDown(storage.close);
       final engine = ElmixEngine(storage: storage);
       final schema = await engine.getCollectionSchema('_admins');
-      expect(schema?.isAuthCollection, true);
+      expect(schema?.isAuthCollection, false);
       final admin = await engine
           .collection('_admins', context: RequestContext.system)
           .get(const RecordIdentifier('admin@example.com'));
