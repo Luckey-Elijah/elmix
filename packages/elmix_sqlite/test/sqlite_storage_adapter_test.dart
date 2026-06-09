@@ -256,6 +256,50 @@ void main() {
     );
 
     test(
+      'deletes collection schemas and their stored SQLite records',
+      () async {
+        final databaseFile = _temporaryDatabaseFile();
+        final firstStorage = SqliteStorageAdapter.open(databaseFile.path);
+        final firstEngine = ElmixEngine(storage: firstStorage);
+        const schema = CollectionSchema(
+          name: 'posts',
+          fields: <SchemaField>[
+            SchemaField.recordIdentifier(),
+            SchemaField(name: 'title', type: .text, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        );
+
+        await firstEngine.registerCollection(schema);
+        await firstEngine
+            .collection('posts')
+            .create(
+              const Record(
+                collection: 'posts',
+                id: RecordIdentifier('post_1'),
+                data: <String, Object?>{'title': 'Temporary'},
+              ),
+            );
+        await firstEngine.deleteCollectionSchema('posts');
+        firstStorage.close();
+
+        final secondStorage = SqliteStorageAdapter.open(databaseFile.path);
+        addTearDown(secondStorage.close);
+        final secondEngine = ElmixEngine(storage: secondStorage);
+
+        expect(await secondEngine.getCollectionSchema('posts'), isNull);
+        expect(await secondEngine.listCollections(), isEmpty);
+        expect(
+          await secondStorage.getRecord(
+            collection: 'posts',
+            id: const RecordIdentifier('post_1'),
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
       'clears removed field values before the same field name is reused',
       () async {
         final storage = SqliteStorageAdapter();

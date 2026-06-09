@@ -141,6 +141,17 @@ class ElmixServer {
         await engine.updateCollectionSchema(schema);
         return ElmixHttpResponse.ok(_schemaToJson(schema));
       }
+      if (request.method == .delete) {
+        if (_isFrameworkOwnedInternalCollection(collection)) {
+          return _error(
+            statusCode: 403,
+            code: 'forbidden',
+            message: 'Framework-owned internal collections cannot be deleted.',
+          );
+        }
+        await engine.deleteCollectionSchema(collection);
+        return const ElmixHttpResponse(statusCode: 204);
+      }
     }
 
     if (adminSegments case ['collections', final collection, 'records']) {
@@ -625,6 +636,10 @@ class ElmixServer {
     return CollectionOperation.values.firstWhere(
       (operation) => operation.name == name,
     );
+  }
+
+  bool _isFrameworkOwnedInternalCollection(String collection) {
+    return const <String>{'_admins'}.contains(collection);
   }
 
   Future<QueryExpression> _queryExpressionFromRequest(

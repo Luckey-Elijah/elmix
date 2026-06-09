@@ -31,6 +31,11 @@ class AdminControlPlane {
     return api.updateCollectionSchema(schema);
   }
 
+  /// Deletes a Collection Schema through the Admin API.
+  Future<void> deleteCollectionSchema(String collection) {
+    return api.deleteCollectionSchema(collection);
+  }
+
   /// Creates a field by updating its owning Collection Schema.
   Future<CollectionSchema> createSchemaField({
     required String collection,
@@ -42,6 +47,25 @@ class AdminControlPlane {
         name: schema.name,
         isAuthCollection: schema.isAuthCollection,
         fields: <SchemaField>[...schema.fields, field],
+        accessRules: schema.accessRules,
+      ),
+    );
+  }
+
+  /// Updates a field by replacing it in its owning Collection Schema.
+  Future<CollectionSchema> updateSchemaField({
+    required String collection,
+    required SchemaField field,
+  }) async {
+    final schema = await api.getCollectionSchema(collection);
+    return api.updateCollectionSchema(
+      CollectionSchema(
+        name: schema.name,
+        isAuthCollection: schema.isAuthCollection,
+        fields: <SchemaField>[
+          for (final existing in schema.fields)
+            if (existing.name == field.name) field else existing,
+        ],
         accessRules: schema.accessRules,
       ),
     );
@@ -169,7 +193,7 @@ class AdminApiClient {
   Future<CollectionSchema> getCollectionSchema(String collection) async {
     final response = await _send(
       method: 'GET',
-      path: '/api/admin/collections/$collection',
+      pathSegments: _adminCollectionPathSegments(collection),
     );
     return _schemaFromJson(_expectObject(response));
   }
@@ -192,17 +216,29 @@ class AdminApiClient {
   ) async {
     final response = await _send(
       method: 'PUT',
-      path: '/api/admin/collections/${schema.name}',
+      pathSegments: _adminCollectionPathSegments(schema.name),
       body: _schemaToJson(schema),
     );
     return _schemaFromJson(_expectObject(response));
+  }
+
+  /// Deletes a Collection Schema.
+  Future<void> deleteCollectionSchema(String collection) async {
+    final response = await _send(
+      method: 'DELETE',
+      pathSegments: _adminCollectionPathSegments(collection),
+    );
+    _expectEmpty(response);
   }
 
   /// Lists records in [collection].
   Future<RecordPage> listRecords(String collection) async {
     final response = await _send(
       method: 'GET',
-      path: '/api/admin/collections/$collection/records',
+      pathSegments: _adminCollectionPathSegments(
+        collection,
+        const <String>['records'],
+      ),
     );
     return _recordPageFromJson(_expectObject(response));
   }
@@ -211,7 +247,10 @@ class AdminApiClient {
   Future<Record> createRecord(Record record) async {
     final response = await _send(
       method: 'POST',
-      path: '/api/admin/collections/${record.collection}/records',
+      pathSegments: _adminCollectionPathSegments(
+        record.collection,
+        const <String>['records'],
+      ),
       body: _recordToJson(record),
     );
     return _recordFromJson(_expectObject(response));
@@ -224,7 +263,10 @@ class AdminApiClient {
   }) async {
     final response = await _send(
       method: 'GET',
-      path: '/api/admin/collections/$collection/records/${id.value}',
+      pathSegments: _adminCollectionPathSegments(
+        collection,
+        <String>['records', id.value],
+      ),
     );
     return _recordFromJson(_expectObject(response));
   }
@@ -233,9 +275,10 @@ class AdminApiClient {
   Future<Record> updateRecord(Record record) async {
     final response = await _send(
       method: 'PATCH',
-      path:
-          '/api/admin/collections/${record.collection}/records/'
-          '${record.id.value}',
+      pathSegments: _adminCollectionPathSegments(
+        record.collection,
+        <String>['records', record.id.value],
+      ),
       body: _recordToJson(record),
     );
     return _recordFromJson(_expectObject(response));
@@ -248,26 +291,47 @@ class AdminApiClient {
   }) async {
     final response = await _send(
       method: 'DELETE',
-      path: '/api/admin/collections/$collection/records/${id.value}',
+      pathSegments: _adminCollectionPathSegments(
+        collection,
+        <String>['records', id.value],
+      ),
     );
     _expectEmpty(response);
   }
 
   Future<AdminApiResponse> _send({
     required String method,
-    required String path,
+    String? path,
+    List<String>? pathSegments,
     Object? body,
   }) {
+    assert(
+      path != null || pathSegments != null,
+      'Admin API requests must provide a path or pathSegments.',
+    );
+    assert(
+      path == null || pathSegments == null,
+      'Admin API requests must not provide both path and pathSegments.',
+    );
     return transport.send(
       AdminApiRequest(
         method: method,
-        url: baseUrl.replace(path: path),
+        url: pathSegments == null
+            ? baseUrl.replace(path: path)
+            : baseUrl.replace(pathSegments: pathSegments),
         headers: <String, String>{
           if (_bearerToken != null) 'authorization': 'Bearer $_bearerToken',
         },
         body: body,
       ),
     );
+  }
+
+  List<String> _adminCollectionPathSegments(
+    String collection, [
+    List<String> suffix = const <String>[],
+  ]) {
+    return <String>['api', 'admin', 'collections', collection, ...suffix];
   }
 }
 

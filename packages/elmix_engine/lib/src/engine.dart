@@ -52,6 +52,18 @@ class ElmixEngine {
     return _storage.listCollectionSchemas();
   }
 
+  /// Deletes a registered collection schema and its records.
+  Future<void> deleteCollectionSchema(String name) async {
+    final existing = await _storage.getCollectionSchema(name);
+    if (existing == null) {
+      throw CollectionSchemaException(
+        'Collection "$name" is not registered.',
+      );
+    }
+
+    return _storage.deleteCollectionSchema(name);
+  }
+
   /// Opens the record API for the collection named [name].
   CollectionHandle collection(
     String name, {

@@ -740,6 +740,61 @@ void main() {
       );
     });
 
+    test(
+      'rejects deletion of framework-owned internal collections',
+      () async {
+        final storage = MemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        final server = ElmixServer(
+          engine,
+          adminAccounts: const <ServerAdminAccount>[
+            ServerAdminAccount(
+              id: AdminAccountIdentifier('admin_1'),
+              email: 'admin@example.test',
+              password: 'admin-secret',
+            ),
+          ],
+        );
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: '_admins',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'email', type: .email, required: true),
+              SchemaField(
+                name: 'passwordHash',
+                type: .password,
+                required: true,
+              ),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{},
+          ),
+        );
+        final auth = await server.handle(
+          const ElmixHttpRequest(
+            method: .post,
+            path: '/api/admin/auth-with-password',
+            body: <String, Object?>{
+              'email': 'admin@example.test',
+              'password': 'admin-secret',
+            },
+          ),
+        );
+        final token = (auth.body! as Map<String, Object?>)['token']! as String;
+
+        final deletion = await server.handle(
+          ElmixHttpRequest(
+            method: .delete,
+            path: '/api/admin/collections/_admins',
+            headers: <String, String>{'authorization': 'Bearer $token'},
+          ),
+        );
+
+        expect(deletion.statusCode, 403);
+        expect(await engine.getCollectionSchema('_admins'), isNotNull);
+      },
+    );
+
     test('manages collection records for the Admin Control Plane', () async {
       final storage = MemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);
@@ -1235,6 +1290,12 @@ class MemoryStorageAdapter implements StorageAdapter {
   @override
   Future<void> putCollectionSchema(CollectionSchema schema) async {
     _schemas[schema.name] = schema;
+  }
+
+  @override
+  Future<void> deleteCollectionSchema(String name) async {
+    _schemas.remove(name);
+    _records.remove(name);
   }
 
   @override

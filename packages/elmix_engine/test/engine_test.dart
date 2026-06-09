@@ -101,6 +101,36 @@ void main() {
         );
       },
     );
+
+    test('deletes collection schemas and their records', () async {
+      final storage = InMemoryStorageAdapter();
+      final engine = ElmixEngine(storage: storage);
+      const schema = CollectionSchema(
+        name: 'posts',
+        fields: [SchemaField(name: 'title', type: .text, required: true)],
+        accessRules: {},
+      );
+
+      await engine.registerCollection(schema);
+      await engine
+          .collection('posts')
+          .create(
+            const Record(
+              collection: 'posts',
+              id: RecordIdentifier('post-1'),
+              data: {'title': 'Temporary'},
+            ),
+          );
+
+      await engine.deleteCollectionSchema('posts');
+
+      expect(await engine.getCollectionSchema('posts'), isNull);
+      expect(await engine.listCollections(), isEmpty);
+      await expectLater(
+        engine.collection('posts').list(),
+        throwsA(isA<RecordValidationException>()),
+      );
+    });
   });
 
   group('ElmixEngine records', () {
@@ -973,6 +1003,12 @@ class InMemoryStorageAdapter implements StorageAdapter {
   @override
   Future<void> putCollectionSchema(CollectionSchema schema) async {
     _schemas[schema.name] = schema;
+  }
+
+  @override
+  Future<void> deleteCollectionSchema(String name) async {
+    _schemas.remove(name);
+    _records.remove(name);
   }
 
   @override

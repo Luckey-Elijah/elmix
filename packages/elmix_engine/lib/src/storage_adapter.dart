@@ -13,6 +13,9 @@ abstract class StorageAdapter {
   /// Lists all persisted collection schemas.
   Future<List<CollectionSchema>> listCollectionSchemas();
 
+  /// Deletes a collection schema and its stored records.
+  Future<void> deleteCollectionSchema(String name);
+
   /// Stores [record], replacing any existing stored record with the same id.
   ///
   /// Adapters may assign an identifier when [record] has a blank id, and should

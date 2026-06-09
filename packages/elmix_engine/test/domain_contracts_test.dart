@@ -229,6 +229,12 @@ class MemoryStorageAdapter extends StorageAdapter {
   }
 
   @override
+  Future<void> deleteCollectionSchema(String name) async {
+    _schemas.remove(name);
+    _records.removeWhere((record) => record.collection == name);
+  }
+
+  @override
   Future<Record> putRecord(Record record) async {
     _records.add(record);
     return record;
