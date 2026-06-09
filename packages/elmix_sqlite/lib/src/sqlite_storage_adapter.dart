@@ -79,6 +79,24 @@ class SqliteStorageAdapter implements StorageAdapter {
   }
 
   @override
+  Future<void> deleteCollectionSchema(String name) async {
+    final table = _collectionTableName(name);
+    _runInTransaction(() {
+      _database.execute('DROP TABLE IF EXISTS ${_quoteIdentifier(table)}');
+      final statement = _database.prepare(
+        '''
+        DELETE FROM _elmix_collection_schemas WHERE name = ?
+        ''',
+      );
+      try {
+        statement.execute(<Object?>[name]);
+      } finally {
+        statement.close();
+      }
+    });
+  }
+
+  @override
   Future<Record> putRecord(Record record) async {
     final schema = await getCollectionSchema(record.collection);
     if (schema == null) {

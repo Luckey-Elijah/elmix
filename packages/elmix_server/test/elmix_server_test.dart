@@ -1238,6 +1238,12 @@ class MemoryStorageAdapter implements StorageAdapter {
   }
 
   @override
+  Future<void> deleteCollectionSchema(String name) async {
+    _schemas.remove(name);
+    _records.remove(name);
+  }
+
+  @override
   Future<Record> putRecord(Record record) async {
     _records.putIfAbsent(
       record.collection,

@@ -31,6 +31,11 @@ class AdminControlPlane {
     return api.updateCollectionSchema(schema);
   }
 
+  /// Deletes a Collection Schema through the Admin API.
+  Future<void> deleteCollectionSchema(String collection) {
+    return api.deleteCollectionSchema(collection);
+  }
+
   /// Creates a field by updating its owning Collection Schema.
   Future<CollectionSchema> createSchemaField({
     required String collection,
@@ -42,6 +47,25 @@ class AdminControlPlane {
         name: schema.name,
         isAuthCollection: schema.isAuthCollection,
         fields: <SchemaField>[...schema.fields, field],
+        accessRules: schema.accessRules,
+      ),
+    );
+  }
+
+  /// Updates a field by replacing it in its owning Collection Schema.
+  Future<CollectionSchema> updateSchemaField({
+    required String collection,
+    required SchemaField field,
+  }) async {
+    final schema = await api.getCollectionSchema(collection);
+    return api.updateCollectionSchema(
+      CollectionSchema(
+        name: schema.name,
+        isAuthCollection: schema.isAuthCollection,
+        fields: <SchemaField>[
+          for (final existing in schema.fields)
+            if (existing.name == field.name) field else existing,
+        ],
         accessRules: schema.accessRules,
       ),
     );
@@ -196,6 +220,15 @@ class AdminApiClient {
       body: _schemaToJson(schema),
     );
     return _schemaFromJson(_expectObject(response));
+  }
+
+  /// Deletes a Collection Schema.
+  Future<void> deleteCollectionSchema(String collection) async {
+    final response = await _send(
+      method: 'DELETE',
+      path: '/api/admin/collections/$collection',
+    );
+    _expectEmpty(response);
   }
 
   /// Lists records in [collection].

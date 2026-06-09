@@ -141,6 +141,10 @@ class ElmixServer {
         await engine.updateCollectionSchema(schema);
         return ElmixHttpResponse.ok(_schemaToJson(schema));
       }
+      if (request.method == .delete) {
+        await engine.deleteCollectionSchema(collection);
+        return const ElmixHttpResponse(statusCode: 204);
+      }
     }
 
     if (adminSegments case ['collections', final collection, 'records']) {

@@ -168,6 +168,59 @@ void main() {
       },
     );
 
+    test(
+      'updates fields and deletes Collection Schemas over the Admin API',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        final server = ElmixServer(engine);
+        final transport = ServerAdminApiTransport(server);
+        final controlPlane = AdminControlPlane(
+          AdminApiClient(
+            baseUrl: Uri.parse('http://localhost'),
+            transport: transport,
+          ),
+        );
+
+        await controlPlane.createCollectionSchema(
+          const CollectionSchema(
+            name: 'posts',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'title', type: .text),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{},
+          ),
+        );
+        final edited = await controlPlane.updateSchemaField(
+          collection: 'posts',
+          field: const SchemaField(
+            name: 'title',
+            type: .text,
+            required: true,
+          ),
+        );
+
+        await controlPlane.deleteCollectionSchema('posts');
+
+        expect(
+          edited.fields.firstWhere((field) => field.name == 'title').required,
+          isTrue,
+        );
+        expect(await controlPlane.listCollectionSchemas(), isEmpty);
+        expect(
+          transport.requests.map(
+            (request) =>
+                '${request.method} '
+                '${request.url.path}',
+          ),
+          containsAll(<String>[
+            'PUT /api/admin/collections/posts',
+            'DELETE /api/admin/collections/posts',
+          ]),
+        );
+      },
+    );
+
     test('throws when Admin API list responses have the wrong shape', () async {
       const transport = StubAdminApiTransport(
         AdminApiResponse(
@@ -287,6 +340,12 @@ class MemoryStorageAdapter implements StorageAdapter {
   @override
   Future<void> putCollectionSchema(CollectionSchema schema) async {
     _schemas[schema.name] = schema;
+  }
+
+  @override
+  Future<void> deleteCollectionSchema(String name) async {
+    _schemas.remove(name);
+    _records.remove(name);
   }
 
   @override
