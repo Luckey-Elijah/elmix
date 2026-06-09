@@ -275,8 +275,8 @@ class _AdminCreateCommand extends args.Command<int> {
     final storage = SqliteStorageAdapter.open(databasePath);
     try {
       final engine = ElmixEngine(storage: storage);
-      final controlPlane = AdminControlPlane(engine);
-      await controlPlane.createAdminAccount(email: email, password: password);
+      final bootstrap = AdminBootstrap(engine);
+      await bootstrap.createAdminAccount(email: email, password: password);
       _elmix._success('Created Admin Account $email.');
       return ExitCode.success.code;
     } finally {

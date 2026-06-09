@@ -106,7 +106,7 @@ class ElmixServer {
       if (request.method == .post) return _authenticateAdmin(request);
     }
     if (adminSegments case ['collections']) {
-      final adminRequired = _requireAdminSession(request);
+      final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
@@ -124,7 +124,7 @@ class ElmixServer {
     }
 
     if (adminSegments case ['collections', final collection]) {
-      final adminRequired = _requireAdminSession(request);
+      final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
@@ -144,13 +144,14 @@ class ElmixServer {
     }
 
     if (adminSegments case ['collections', final collection, 'records']) {
-      final adminRequired = _requireAdminSession(request);
+      final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) {
         return adminRequired;
       }
       return _handleRecordCollectionRoute(
         request: request,
         collection: collection,
+        context: RequestContext.system,
       );
     }
 
@@ -160,18 +161,19 @@ class ElmixServer {
       'records',
       final id,
     ]) {
-      final adminRequired = _requireAdminSession(request);
+      final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) return adminRequired;
       return _handleRecordRoute(
         request: request,
         collection: collection,
         id: RecordIdentifier(id),
+        context: RequestContext.system,
       );
     }
     return null;
   }
 
-  ElmixHttpResponse _authenticateAdmin(ElmixHttpRequest request) {
+  Future<ElmixHttpResponse> _authenticateAdmin(ElmixHttpRequest request) async {
     final object = request.body is Map<String, Object?>
         ? request.body! as Map<String, Object?>
         : const <String, Object?>{};
@@ -180,7 +182,19 @@ class ElmixServer {
     final account = _adminAccounts.where(
       (candidate) => candidate.email == email && candidate.password == password,
     );
-    if (account.isEmpty) {
+    final configuredAdmin = account.isEmpty
+        ? null
+        : AdminAccount(
+            id: account.first.id,
+            email: account.first.email,
+          );
+    final internalAdmin =
+        configuredAdmin ??
+        await _authenticateInternalAdminAccount(
+          email: email is String ? email : '',
+          password: password is String ? password : '',
+        );
+    if (internalAdmin == null) {
       return _error(
         statusCode: 401,
         code: 'invalid_credentials',
@@ -188,10 +202,7 @@ class ElmixServer {
       );
     }
 
-    final admin = AdminAccount(
-      id: account.first.id,
-      email: account.first.email,
-    );
+    final admin = internalAdmin;
     final token = 'admin:${admin.id.value}';
     _adminSessions[token] = admin;
     return ElmixHttpResponse.ok(<String, Object?>{
@@ -201,6 +212,41 @@ class ElmixServer {
         'email': admin.email,
       },
     });
+  }
+
+  Future<AdminAccount?> _authenticateInternalAdminAccount({
+    required String email,
+    required String password,
+  }) async {
+    final schema = await engine.getCollectionSchema('_admins');
+    if (schema == null) {
+      return null;
+    }
+    final page = await engine
+        .collection('_admins', context: RequestContext.system)
+        .list(
+          query: QueryExpression(
+            filters: <QueryFilter>[
+              QueryFilter(
+                field: 'email',
+                operator: .equals,
+                value: email,
+              ),
+            ],
+          ),
+        );
+    for (final record in page.items) {
+      if (_verifyAdminPassword(
+        password: password,
+        stored: record.data['passwordHash'],
+      )) {
+        return AdminAccount(
+          id: AdminAccountIdentifier(record.id.value),
+          email: record.data['email']! as String,
+        );
+      }
+    }
+    return null;
   }
 
   Future<ElmixHttpResponse> _authenticateAuthRecord({
@@ -247,12 +293,14 @@ class ElmixServer {
   Future<ElmixHttpResponse> _handleRecordCollectionRoute({
     required ElmixHttpRequest request,
     required String collection,
+    RequestContext? context,
   }) async {
+    final requestContext = context ?? _contextForRequest(request);
     if (request.method == .get) {
       final page = await engine
           .collection(
             collection,
-            context: _contextForRequest(request),
+            context: requestContext,
           )
           .list(query: await _queryExpressionFromRequest(request, collection));
       return ElmixHttpResponse.ok(_recordPageToJson(page));
@@ -262,7 +310,7 @@ class ElmixServer {
       final created = await engine
           .collection(
             collection,
-            context: _contextForRequest(request),
+            context: requestContext,
           )
           .create(
             _recordFromJson(
@@ -280,10 +328,12 @@ class ElmixServer {
     required ElmixHttpRequest request,
     required String collection,
     required RecordIdentifier id,
+    RequestContext? context,
   }) async {
+    final requestContext = context ?? _contextForRequest(request);
     final records = engine.collection(
       collection,
-      context: _contextForRequest(request),
+      context: requestContext,
     );
     if (request.method == .get) {
       final record = await records.get(id);
@@ -328,8 +378,10 @@ class ElmixServer {
     return _notFound();
   }
 
-  ElmixHttpResponse? _requireAdminSession(ElmixHttpRequest request) {
-    if (_adminAccounts.isEmpty || _adminFromBearer(request) != null) {
+  Future<ElmixHttpResponse?> _requireAdminSession(
+    ElmixHttpRequest request,
+  ) async {
+    if (!await _hasAdminAccounts() || _adminFromBearer(request) != null) {
       return null;
     }
     return _error(
@@ -337,6 +389,22 @@ class ElmixServer {
       code: 'admin_session_required',
       message: 'An Admin Account session is required.',
     );
+  }
+
+  Future<bool> _hasAdminAccounts() async {
+    if (_adminAccounts.isNotEmpty) {
+      return true;
+    }
+    final schema = await engine.getCollectionSchema('_admins');
+    if (schema == null) {
+      return false;
+    }
+    final page = await engine
+        .collection('_admins', context: RequestContext.system)
+        .list(
+          query: const QueryExpression(pagination: QueryPagination(perPage: 1)),
+        );
+    return page.totalItems > 0;
   }
 
   AdminAccount? _adminFromBearer(ElmixHttpRequest request) {
@@ -646,6 +714,13 @@ class ElmixServer {
     final token = base64UrlEncode(bytes);
     _authRecordSessions[token] = authRecord;
     return token;
+  }
+
+  bool _verifyAdminPassword({
+    required String password,
+    required Object? stored,
+  }) {
+    return AuthPassword.verify(password: password, stored: stored);
   }
 }
 

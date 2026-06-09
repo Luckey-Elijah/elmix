@@ -29,8 +29,16 @@ The first-release package boundary that implements the Initial Product Loop with
 _Avoid_: Full package roadmap
 
 **Admin Control Plane**:
-The built-in administrative experience for managing schema, records, basic access rules, and administrator access.
+The built-in admin-facing web application for managing schema, records, basic access rules, and administrator access through the Admin API.
 _Avoid_: App builder, CMS, observability dashboard
+
+**Admin Bootstrap**:
+The administrative setup or recovery path for creating enough Admin Account access to reach the Admin Control Plane.
+_Avoid_: Admin Control Plane, Admin API
+
+**Internal Collection**:
+A framework-owned collection used by Elmix itself, typically not exposed as an ordinary application collection.
+_Avoid_: Hidden collection, user collection
 
 **Access Rule**:
 A persisted expression that decides whether a request may perform a collection operation.
@@ -119,6 +127,8 @@ _Avoid_: Full Elmix, complete PocketBase-like surface
 - The **Initial Module Set** consists of engine, SQLite adapter, server, admin, Dart client, and CLI packages.
 - Generated clients and a standalone hooks package are outside the **Initial Module Set**.
 - The **Admin Control Plane** manages the Initial Product Loop but does not include activity logs, API exploration, file management, realtime inspection, dashboard metrics, or CMS-style editing in the initial release.
+- **Admin Bootstrap** belongs to the administrative experience but is distinct from the **Admin Control Plane** and may use direct trusted setup paths before an operator can log into the web application.
+- **Internal Collections** are owned by the framework and are typically not exposed as ordinary application collections.
 - An **Access Rule** is authorization logic, distinct from authentication.
 - Initial **Access Rule** expressions cover list, view, create, update, and delete collection operations.
 - Initial **Access Rule** expressions can refer to auth state, current user id, record fields, request data fields, and basic boolean/comparison operators.
@@ -172,6 +182,12 @@ _Avoid_: Full Elmix, complete PocketBase-like surface
 >
 > **Dev:** "Is the admin UI supposed to be an app builder?"
 > **Domain expert:** "No — the **Admin Control Plane** exists to manage schema, records, basic access rules, and administrator access."
+>
+> **Dev:** "Is direct first-admin setup part of the Admin Control Plane?"
+> **Domain expert:** "No — direct setup is **Admin Bootstrap**; the **Admin Control Plane** is the admin-facing web application over the Admin API."
+>
+> **Dev:** "Are framework-owned collections just hidden user collections?"
+> **Domain expert:** "No — they are **Internal Collections**, typically not exposed as ordinary application collections."
 >
 > **Dev:** "Should permissions be Dart callbacks only?"
 > **Domain expert:** "No — **Access Rules** need persisted expressions so the **Admin Control Plane** can edit them."
