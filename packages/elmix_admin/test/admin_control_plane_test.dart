@@ -221,6 +221,37 @@ void main() {
       },
     );
 
+    test(
+      'deletes Collection Schemas with path delimiters in their names',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        final server = ElmixServer(engine);
+        final transport = ServerAdminApiTransport(server);
+        final controlPlane = AdminControlPlane(
+          AdminApiClient(
+            baseUrl: Uri.parse('http://localhost'),
+            transport: transport,
+          ),
+        );
+
+        await controlPlane.createCollectionSchema(
+          const CollectionSchema(
+            name: 'drafts/2026',
+            fields: <SchemaField>[SchemaField.recordIdentifier()],
+            accessRules: <CollectionOperation, AccessRule>{},
+          ),
+        );
+
+        await controlPlane.deleteCollectionSchema('drafts/2026');
+
+        expect(await controlPlane.listCollectionSchemas(), isEmpty);
+        expect(
+          transport.requests.map((request) => request.url.path),
+          contains('/api/admin/collections/drafts%2F2026'),
+        );
+      },
+    );
+
     test('throws when Admin API list responses have the wrong shape', () async {
       const transport = StubAdminApiTransport(
         AdminApiResponse(
