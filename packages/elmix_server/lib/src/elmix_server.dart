@@ -151,6 +151,7 @@ class ElmixServer {
       return _handleRecordCollectionRoute(
         request: request,
         collection: collection,
+        context: RequestContext.system,
       );
     }
 
@@ -166,6 +167,7 @@ class ElmixServer {
         request: request,
         collection: collection,
         id: RecordIdentifier(id),
+        context: RequestContext.system,
       );
     }
     return null;
@@ -291,12 +293,14 @@ class ElmixServer {
   Future<ElmixHttpResponse> _handleRecordCollectionRoute({
     required ElmixHttpRequest request,
     required String collection,
+    RequestContext? context,
   }) async {
+    final requestContext = context ?? _contextForRequest(request);
     if (request.method == .get) {
       final page = await engine
           .collection(
             collection,
-            context: _contextForRequest(request),
+            context: requestContext,
           )
           .list(query: await _queryExpressionFromRequest(request, collection));
       return ElmixHttpResponse.ok(_recordPageToJson(page));
@@ -306,7 +310,7 @@ class ElmixServer {
       final created = await engine
           .collection(
             collection,
-            context: _contextForRequest(request),
+            context: requestContext,
           )
           .create(
             _recordFromJson(
@@ -324,10 +328,12 @@ class ElmixServer {
     required ElmixHttpRequest request,
     required String collection,
     required RecordIdentifier id,
+    RequestContext? context,
   }) async {
+    final requestContext = context ?? _contextForRequest(request);
     final records = engine.collection(
       collection,
-      context: _contextForRequest(request),
+      context: requestContext,
     );
     if (request.method == .get) {
       final record = await records.get(id);

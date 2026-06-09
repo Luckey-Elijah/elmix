@@ -809,6 +809,103 @@ void main() {
       );
       expect(delete.statusCode, 204);
     });
+
+    test(
+      'uses system context for authenticated Admin API record routes',
+      () async {
+        final storage = MemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        final server = ElmixServer(
+          engine,
+          adminAccounts: const <ServerAdminAccount>[
+            ServerAdminAccount(
+              id: AdminAccountIdentifier('admin_1'),
+              email: 'admin@example.test',
+              password: 'admin-secret',
+            ),
+          ],
+        );
+
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: 'posts',
+            fields: <SchemaField>[
+              SchemaField.recordIdentifier(),
+              SchemaField(name: 'title', type: .text, required: true),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{
+              .list: AccessRule('false'),
+              .view: AccessRule('false'),
+              .create: AccessRule('false'),
+              .update: AccessRule('false'),
+              .delete: AccessRule('false'),
+            },
+          ),
+        );
+
+        final auth = await server.handle(
+          const ElmixHttpRequest(
+            method: .post,
+            path: '/api/admin/auth-with-password',
+            body: <String, Object?>{
+              'email': 'admin@example.test',
+              'password': 'admin-secret',
+            },
+          ),
+        );
+        final token = (auth.body! as Map<String, Object?>)['token']! as String;
+        final headers = <String, String>{'authorization': 'Bearer $token'};
+
+        final create = await server.handle(
+          ElmixHttpRequest(
+            method: .post,
+            path: '/api/admin/collections/posts/records',
+            headers: headers,
+            body: const <String, Object?>{
+              'id': 'post_1',
+              'data': <String, Object?>{'title': 'Admin created'},
+            },
+          ),
+        );
+        final list = await server.handle(
+          ElmixHttpRequest(
+            method: .get,
+            path: '/api/admin/collections/posts/records',
+            headers: headers,
+          ),
+        );
+        final view = await server.handle(
+          ElmixHttpRequest(
+            method: .get,
+            path: '/api/admin/collections/posts/records/post_1',
+            headers: headers,
+          ),
+        );
+        final update = await server.handle(
+          ElmixHttpRequest(
+            method: .patch,
+            path: '/api/admin/collections/posts/records/post_1',
+            headers: headers,
+            body: const <String, Object?>{
+              'data': <String, Object?>{'title': 'Admin updated'},
+            },
+          ),
+        );
+        final delete = await server.handle(
+          ElmixHttpRequest(
+            method: .delete,
+            path: '/api/admin/collections/posts/records/post_1',
+            headers: headers,
+          ),
+        );
+
+        expect(create.statusCode, 201);
+        expect(list.statusCode, 200);
+        expect(view.statusCode, 200);
+        expect(update.statusCode, 200);
+        expect(delete.statusCode, 204);
+      },
+    );
   });
 
   group('ElmixServer authentication', () {
