@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
 import 'package:elmix_engine/elmix_engine.dart';
 
 /// Server boundary around an [ElmixEngine].
@@ -716,66 +714,7 @@ class ElmixServer {
     required String password,
     required Object? stored,
   }) {
-    if (stored is! String) {
-      return false;
-    }
-    final parts = stored.split(r'$');
-    if (parts.length != 4 || parts.first != 'pbkdf2-sha256') {
-      return false;
-    }
-    final iterations = int.tryParse(parts[1]);
-    if (iterations == null) {
-      return false;
-    }
-    final salt = base64Url.decode(parts[2]);
-    final expected = base64Url.decode(parts[3]);
-    final actual = _pbkdf2Sha256(
-      password: utf8.encode(password),
-      salt: salt,
-      iterations: iterations,
-      length: expected.length,
-    );
-    return _constantTimeEquals(actual, expected);
-  }
-
-  List<int> _pbkdf2Sha256({
-    required List<int> password,
-    required List<int> salt,
-    required int iterations,
-    required int length,
-  }) {
-    final hmac = Hmac(sha256, password);
-    final blocks = <int>[];
-    var blockIndex = 1;
-    while (blocks.length < length) {
-      final blockIndexBytes = ByteData(4)..setUint32(0, blockIndex);
-      var block = hmac.convert([
-        ...salt,
-        for (var index = 0; index < blockIndexBytes.lengthInBytes; index += 1)
-          blockIndexBytes.getUint8(index),
-      ]).bytes;
-      final output = List<int>.from(block);
-      for (var round = 1; round < iterations; round += 1) {
-        block = hmac.convert(block).bytes;
-        for (var index = 0; index < output.length; index += 1) {
-          output[index] ^= block[index];
-        }
-      }
-      blocks.addAll(output);
-      blockIndex += 1;
-    }
-    return blocks.take(length).toList();
-  }
-
-  bool _constantTimeEquals(List<int> left, List<int> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-    var difference = 0;
-    for (var index = 0; index < left.length; index += 1) {
-      difference |= left[index] ^ right[index];
-    }
-    return difference == 0;
+    return AuthPassword.verify(password: password, stored: stored);
   }
 }
 

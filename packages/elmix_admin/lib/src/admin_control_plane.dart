@@ -93,7 +93,7 @@ class AdminControlPlane {
   }
 
   /// Views a record through the Admin API.
-  Future<Record?> viewRecord({
+  Future<Record> viewRecord({
     required String collection,
     required RecordIdentifier id,
   }) {
@@ -157,7 +157,10 @@ class AdminApiClient {
     final object = _expectObject(response);
     final items = object['items'];
     if (items is! List<Object?>) {
-      return const <CollectionSchema>[];
+      throw AdminApiException(
+        response,
+        message: 'Admin API response field "items" must be a list.',
+      );
     }
     return items.map(_schemaFromJson).toList();
   }
@@ -215,7 +218,7 @@ class AdminApiClient {
   }
 
   /// Views one record.
-  Future<Record?> viewRecord({
+  Future<Record> viewRecord({
     required String collection,
     required RecordIdentifier id,
   }) async {
@@ -223,9 +226,6 @@ class AdminApiClient {
       method: 'GET',
       path: '/api/admin/collections/$collection/records/${id.value}',
     );
-    if (response.statusCode == 404) {
-      return null;
-    }
     return _recordFromJson(_expectObject(response));
   }
 
@@ -370,10 +370,13 @@ class AdminApiTransport {
 /// Error returned when an Admin API request is unsuccessful.
 class AdminApiException implements Exception {
   /// Creates an Admin API exception.
-  const AdminApiException(this.response);
+  const AdminApiException(this.response, {String? message})
+    : _message = message;
 
   /// The unsuccessful response.
   final AdminApiResponse response;
+
+  final String? _message;
 
   /// HTTP status code returned by the Admin API.
   int get statusCode => response.statusCode;
@@ -382,7 +385,7 @@ class AdminApiException implements Exception {
   String? get code => _errorField('code');
 
   /// Elmix-owned error message, when present.
-  String? get message => _errorField('message');
+  String? get message => _message ?? _errorField('message');
 
   @override
   String toString() {

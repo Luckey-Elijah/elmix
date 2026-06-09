@@ -1,8 +1,3 @@
-import 'dart:convert';
-import 'dart:math';
-import 'dart:typed_data';
-
-import 'package:crypto/crypto.dart';
 import 'package:elmix_engine/elmix_engine.dart';
 
 /// Trusted setup and recovery helper for Admin Account access.
@@ -24,7 +19,7 @@ class AdminBootstrap {
       id: RecordIdentifier(email),
       data: <String, Object?>{
         'email': email,
-        'passwordHash': _passwordHash(password),
+        'passwordHash': AuthPassword.hash(password),
       },
     );
     return engine
@@ -58,56 +53,5 @@ class AdminBootstrap {
         },
       ),
     );
-  }
-
-  String _passwordHash(String password) {
-    const iterations = 120000;
-    final salt = _randomBytes(16);
-    final hash = _pbkdf2Sha256(
-      password: utf8.encode(password),
-      salt: salt,
-      iterations: iterations,
-      length: 32,
-    );
-    return [
-      'pbkdf2-sha256',
-      iterations,
-      base64UrlEncode(salt),
-      base64UrlEncode(hash),
-    ].join(r'$');
-  }
-
-  List<int> _randomBytes(int length) {
-    final random = Random.secure();
-    return List<int>.generate(length, (_) => random.nextInt(256));
-  }
-
-  List<int> _pbkdf2Sha256({
-    required List<int> password,
-    required List<int> salt,
-    required int iterations,
-    required int length,
-  }) {
-    final hmac = Hmac(sha256, password);
-    final blocks = <int>[];
-    var blockIndex = 1;
-    while (blocks.length < length) {
-      final blockIndexBytes = ByteData(4)..setUint32(0, blockIndex);
-      var block = hmac.convert([
-        ...salt,
-        for (var index = 0; index < blockIndexBytes.lengthInBytes; index += 1)
-          blockIndexBytes.getUint8(index),
-      ]).bytes;
-      final output = List<int>.from(block);
-      for (var round = 1; round < iterations; round += 1) {
-        block = hmac.convert(block).bytes;
-        for (var index = 0; index < output.length; index += 1) {
-          output[index] ^= block[index];
-        }
-      }
-      blocks.addAll(output);
-      blockIndex += 1;
-    }
-    return blocks.take(length).toList();
   }
 }

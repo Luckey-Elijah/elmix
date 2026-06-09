@@ -135,10 +135,6 @@ void main() {
           collection: 'posts',
           id: const RecordIdentifier('post_1'),
         );
-        final deleted = await controlPlane.viewRecord(
-          collection: 'posts',
-          id: const RecordIdentifier('post_1'),
-        );
 
         expect(withField.fields.map((field) => field.name), ['id', 'title']);
         expect(
@@ -148,7 +144,19 @@ void main() {
         expect(created.data['title'], 'Admin created');
         expect(page.totalItems, 1);
         expect(updated.data['title'], 'Admin updated');
-        expect(deleted, isNull);
+        await expectLater(
+          controlPlane.viewRecord(
+            collection: 'posts',
+            id: const RecordIdentifier('post_1'),
+          ),
+          throwsA(
+            isA<AdminApiException>().having(
+              (error) => error.statusCode,
+              'statusCode',
+              404,
+            ),
+          ),
+        );
         expect(
           transport.requests.map((request) => request.url.path),
           containsAll(<String>[
@@ -159,7 +167,44 @@ void main() {
         );
       },
     );
+
+    test('throws when Admin API list responses have the wrong shape', () async {
+      const transport = StubAdminApiTransport(
+        AdminApiResponse(
+          statusCode: 200,
+          body: <String, Object?>{'items': 'not-a-list'},
+        ),
+      );
+      final controlPlane = AdminControlPlane(
+        AdminApiClient(
+          baseUrl: Uri.parse('http://localhost'),
+          transport: transport,
+        ),
+      );
+
+      await expectLater(
+        controlPlane.listCollectionSchemas(),
+        throwsA(
+          isA<AdminApiException>().having(
+            (error) => error.message,
+            'message',
+            contains('items'),
+          ),
+        ),
+      );
+    });
   });
+}
+
+class StubAdminApiTransport extends AdminApiTransport {
+  const StubAdminApiTransport(this.response);
+
+  final AdminApiResponse response;
+
+  @override
+  Future<AdminApiResponse> send(AdminApiRequest request) async {
+    return response;
+  }
 }
 
 class ServerAdminApiTransport extends AdminApiTransport {

@@ -81,6 +81,24 @@ void main() {
       expect(adminAccount.id.value, 'admin_1');
       expect(adminAccount.email, 'admin@example.com');
     });
+
+    test('hash passwords with PBKDF2 and verify legacy hashes', () {
+      final hash = AuthPassword.hash('secret');
+
+      expect(hash, startsWith(r'pbkdf2-sha256$'));
+      expect(AuthPassword.verify(password: 'secret', stored: hash), isTrue);
+      expect(AuthPassword.verify(password: 'wrong', stored: hash), isFalse);
+      const legacySha256 =
+          'sha256:'
+          '2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b';
+      expect(
+        AuthPassword.verify(
+          password: 'secret',
+          stored: legacySha256,
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('Storage Adapter contracts', () {

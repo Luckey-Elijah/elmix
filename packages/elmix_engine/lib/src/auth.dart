@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:elmix_engine/src/record.dart';
+import 'package:pointycastle/export.dart';
 
 /// Auth Record identity attached to one Engine request.
 class AuthRecordIdentity {
@@ -63,19 +66,34 @@ class AuthRecordAuthenticationException implements Exception {
 
 /// Password hashing helpers for Auth Records and password fields.
 class AuthPassword {
-  static const _prefix = 'sha256:';
+  static const _legacySha256Prefix = 'sha256:';
   static const _pbkdf2Sha256Prefix = r'pbkdf2-sha256$';
+  static const _pbkdf2Iterations = 120000;
+  static const _saltLength = 16;
+  static const _hashLength = 32;
 
   /// Returns a stored password hash for [password].
   static String hash(String password) {
-    final digest = sha256.convert(utf8.encode(password));
-    return '$_prefix$digest';
+    final salt = _randomBytes(_saltLength);
+    final hash = _pbkdf2Sha256(
+      password: utf8.encode(password),
+      salt: salt,
+      iterations: _pbkdf2Iterations,
+      length: _hashLength,
+    );
+    return <Object>[
+      'pbkdf2-sha256',
+      _pbkdf2Iterations,
+      base64UrlEncode(salt),
+      base64UrlEncode(hash),
+    ].join(r'$');
   }
 
   /// Whether [stored] is a password hash produced by [hash].
   static bool isHash(Object? stored) {
     return stored is String &&
-        (stored.startsWith(_prefix) || stored.startsWith(_pbkdf2Sha256Prefix));
+        (stored.startsWith(_legacySha256Prefix) ||
+            stored.startsWith(_pbkdf2Sha256Prefix));
   }
 
   /// Verifies [password] against a stored hash.
@@ -83,7 +101,66 @@ class AuthPassword {
     required String password,
     required Object? stored,
   }) {
-    return stored is String && stored == hash(password);
+    if (stored is! String) {
+      return false;
+    }
+    if (stored.startsWith(_legacySha256Prefix)) {
+      final digest = sha256.convert(utf8.encode(password));
+      return _constantTimeEquals(
+        utf8.encode(stored),
+        utf8.encode('$_legacySha256Prefix$digest'),
+      );
+    }
+    final parts = stored.split(r'$');
+    if (parts.length != 4 || parts.first != 'pbkdf2-sha256') {
+      return false;
+    }
+    final iterations = int.tryParse(parts[1]);
+    if (iterations == null) {
+      return false;
+    }
+    final salt = base64Url.decode(parts[2]);
+    final expected = base64Url.decode(parts[3]);
+    final actual = _pbkdf2Sha256(
+      password: utf8.encode(password),
+      salt: salt,
+      iterations: iterations,
+      length: expected.length,
+    );
+    return _constantTimeEquals(actual, expected);
+  }
+
+  static List<int> _randomBytes(int length) {
+    final random = Random.secure();
+    return List<int>.generate(length, (_) => random.nextInt(256));
+  }
+
+  static Uint8List _pbkdf2Sha256({
+    required List<int> password,
+    required List<int> salt,
+    required int iterations,
+    required int length,
+  }) {
+    final derivator = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64))
+      ..init(
+        Pbkdf2Parameters(
+          Uint8List.fromList(salt),
+          iterations,
+          length,
+        ),
+      );
+    return derivator.process(Uint8List.fromList(password));
+  }
+
+  static bool _constantTimeEquals(List<int> left, List<int> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+    var difference = 0;
+    for (var index = 0; index < left.length; index += 1) {
+      difference |= left[index] ^ right[index];
+    }
+    return difference == 0;
   }
 }
 
