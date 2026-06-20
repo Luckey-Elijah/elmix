@@ -214,7 +214,7 @@ class ElmixServer {
     }
 
     final admin = internalAdmin;
-    final token = 'admin:${admin.id.value}';
+    final token = _issueBearerToken();
     _adminSessions[token] = admin;
     return ElmixHttpResponse.ok(<String, Object?>{
       'token': token,
@@ -724,11 +724,15 @@ class ElmixServer {
   }
 
   String _issueAuthRecordToken(AuthRecordIdentity authRecord) {
-    final random = Random.secure();
-    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
-    final token = base64UrlEncode(bytes);
+    final token = _issueBearerToken();
     _authRecordSessions[token] = authRecord;
     return token;
+  }
+
+  String _issueBearerToken() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+    return base64UrlEncode(bytes);
   }
 
   bool _verifyAdminPassword({
