@@ -3,21 +3,27 @@ import 'dart:math';
 
 import 'package:elmix_engine/elmix_engine.dart';
 
+import 'admin_auth_provider.dart';
+
 /// Server boundary around an [ElmixEngine].
 ///
 /// A concrete HTTP implementation can be added here without leaking transport
 /// details into the Engine.
 class ElmixServer {
   /// Creates a server boundary backed by [engine].
+  ///
+  /// If [adminAuth] is provided, it is used to authenticate Admin Accounts
+  /// before falling back to the persistent `_admins` collection. When omitted,
+  /// only the persistent collection is consulted.
   ElmixServer(
     this.engine, {
-    List<ServerAdminAccount> adminAccounts = const <ServerAdminAccount>[],
-  }) : _adminAccounts = adminAccounts;
+    AdminAuthProvider? adminAuth,
+  }) : _adminAuth = adminAuth;
 
   /// The engine exposed through this server boundary.
   final ElmixEngine engine;
 
-  final List<ServerAdminAccount> _adminAccounts;
+  final AdminAuthProvider? _adminAuth;
   final _adminSessions = <String, AdminAccount>{};
   final _authRecordSessions = <String, AuthRecordIdentity>{};
 
@@ -190,15 +196,13 @@ class ElmixServer {
         : const <String, Object?>{};
     final email = object['email'];
     final password = object['password'];
-    final account = _adminAccounts.where(
-      (candidate) => candidate.email == email && candidate.password == password,
-    );
-    final configuredAdmin = account.isEmpty
-        ? null
-        : AdminAccount(
-            id: account.first.id,
-            email: account.first.email,
-          );
+    AdminAccount? configuredAdmin;
+    if (_adminAuth != null) {
+      configuredAdmin = await _adminAuth!.authenticateWithPassword(
+        email: email is String ? email : '',
+        password: password is String ? password : '',
+      );
+    }
     final internalAdmin =
         configuredAdmin ??
         await _authenticateInternalAdminAccount(
@@ -403,7 +407,7 @@ class ElmixServer {
   }
 
   Future<bool> _hasAdminAccounts() async {
-    if (_adminAccounts.isNotEmpty) {
+    if (_adminAuth?.hasAccounts == true) {
       return true;
     }
     final schema = await engine.getCollectionSchema('_admins');
