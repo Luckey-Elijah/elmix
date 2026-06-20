@@ -11,13 +11,13 @@ class ElmixServer {
   /// Creates a server boundary backed by [engine].
   ElmixServer(
     this.engine, {
-    List<ServerAdminAccount> adminAccounts = const <ServerAdminAccount>[],
-  }) : _adminAccounts = adminAccounts;
+    AdminAuthProvider? adminAuth,
+  }) : _adminAuth = adminAuth ?? EngineAdminAuthProvider(engine);
 
   /// The engine exposed through this server boundary.
   final ElmixEngine engine;
 
-  final List<ServerAdminAccount> _adminAccounts;
+  final AdminAuthProvider _adminAuth;
   final _adminSessions = <String, AdminAccount>{};
   final _authRecordSessions = <String, AuthRecordIdentity>{};
 
@@ -190,22 +190,11 @@ class ElmixServer {
         : const <String, Object?>{};
     final email = object['email'];
     final password = object['password'];
-    final account = _adminAccounts.where(
-      (candidate) => candidate.email == email && candidate.password == password,
+    final admin = await _adminAuth.authenticateWithPassword(
+      email: email is String ? email : '',
+      password: password is String ? password : '',
     );
-    final configuredAdmin = account.isEmpty
-        ? null
-        : AdminAccount(
-            id: account.first.id,
-            email: account.first.email,
-          );
-    final internalAdmin =
-        configuredAdmin ??
-        await _authenticateInternalAdminAccount(
-          email: email is String ? email : '',
-          password: password is String ? password : '',
-        );
-    if (internalAdmin == null) {
+    if (admin == null) {
       return _error(
         statusCode: 401,
         code: 'invalid_credentials',
@@ -213,7 +202,6 @@ class ElmixServer {
       );
     }
 
-    final admin = internalAdmin;
     final token = _issueBearerToken();
     _adminSessions[token] = admin;
     return ElmixHttpResponse.ok(<String, Object?>{
@@ -223,41 +211,6 @@ class ElmixServer {
         'email': admin.email,
       },
     });
-  }
-
-  Future<AdminAccount?> _authenticateInternalAdminAccount({
-    required String email,
-    required String password,
-  }) async {
-    final schema = await engine.getCollectionSchema('_admins');
-    if (schema == null) {
-      return null;
-    }
-    final page = await engine
-        .collection('_admins', context: RequestContext.system)
-        .list(
-          query: QueryExpression(
-            filters: <QueryFilter>[
-              QueryFilter(
-                field: 'email',
-                operator: .equals,
-                value: email,
-              ),
-            ],
-          ),
-        );
-    for (final record in page.items) {
-      if (_verifyAdminPassword(
-        password: password,
-        stored: record.data['passwordHash'],
-      )) {
-        return AdminAccount(
-          id: AdminAccountIdentifier(record.id.value),
-          email: record.data['email']! as String,
-        );
-      }
-    }
-    return null;
   }
 
   Future<ElmixHttpResponse> _authenticateAuthRecord({
@@ -403,19 +356,7 @@ class ElmixServer {
   }
 
   Future<bool> _hasAdminAccounts() async {
-    if (_adminAccounts.isNotEmpty) {
-      return true;
-    }
-    final schema = await engine.getCollectionSchema('_admins');
-    if (schema == null) {
-      return false;
-    }
-    final page = await engine
-        .collection('_admins', context: RequestContext.system)
-        .list(
-          query: const QueryExpression(pagination: QueryPagination(perPage: 1)),
-        );
-    return page.totalItems > 0;
+    return _adminAuth.hasAccounts();
   }
 
   AdminAccount? _adminFromBearer(ElmixHttpRequest request) {
@@ -734,13 +675,6 @@ class ElmixServer {
     final bytes = List<int>.generate(32, (_) => random.nextInt(256));
     return base64UrlEncode(bytes);
   }
-
-  bool _verifyAdminPassword({
-    required String password,
-    required Object? stored,
-  }) {
-    return AuthPassword.verify(password: password, stored: stored);
-  }
 }
 
 /// Admin Account credentials known to the server boundary.
@@ -760,6 +694,93 @@ class ServerAdminAccount {
 
   /// Password accepted by the server for this Admin Account.
   final String password;
+}
+
+/// Credential source for Admin Account authentication.
+abstract class AdminAuthProvider {
+  /// Returns the authenticated Admin Account, if the credentials are valid.
+  Future<AdminAccount?> authenticateWithPassword({
+    required String email,
+    required String password,
+  });
+
+  /// Whether this source contains at least one Admin Account.
+  Future<bool> hasAccounts();
+}
+
+/// In-memory [AdminAuthProvider] for tests and bootstrap examples.
+class InMemoryAdminAuthProvider implements AdminAuthProvider {
+  /// Creates a provider from [accounts].
+  const InMemoryAdminAuthProvider(this.accounts);
+
+  /// Credentials known to this provider.
+  final List<ServerAdminAccount> accounts;
+
+  @override
+  Future<AdminAccount?> authenticateWithPassword({
+    required String email,
+    required String password,
+  }) async {
+    final account = accounts.where(
+      (candidate) => candidate.email == email && candidate.password == password,
+    );
+    if (account.isEmpty) return null;
+    return AdminAccount(id: account.first.id, email: account.first.email);
+  }
+
+  @override
+  Future<bool> hasAccounts() async => accounts.isNotEmpty;
+}
+
+/// [AdminAuthProvider] backed by the framework-owned Admin Account records.
+class EngineAdminAuthProvider implements AdminAuthProvider {
+  /// Creates a provider that reads Admin Accounts through [engine].
+  EngineAdminAuthProvider(this.engine);
+
+  /// Engine used to access the internal Admin Account collection.
+  final ElmixEngine engine;
+
+  @override
+  Future<AdminAccount?> authenticateWithPassword({
+    required String email,
+    required String password,
+  }) async {
+    final schema = await engine.getCollectionSchema('_admins');
+    if (schema == null) return null;
+    final page = await engine
+        .collection('_admins', context: RequestContext.system)
+        .list(
+          query: QueryExpression(
+            filters: <QueryFilter>[
+              QueryFilter(field: 'email', operator: .equals, value: email),
+            ],
+          ),
+        );
+    for (final record in page.items) {
+      if (AuthPassword.verify(
+        password: password,
+        stored: record.data['passwordHash'],
+      )) {
+        return AdminAccount(
+          id: AdminAccountIdentifier(record.id.value),
+          email: record.data['email']! as String,
+        );
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<bool> hasAccounts() async {
+    final schema = await engine.getCollectionSchema('_admins');
+    if (schema == null) return false;
+    final page = await engine
+        .collection('_admins', context: RequestContext.system)
+        .list(
+          query: const QueryExpression(pagination: QueryPagination(perPage: 1)),
+        );
+    return page.totalItems > 0;
+  }
 }
 
 /// HTTP request methods accepted by the Elmix server boundary.

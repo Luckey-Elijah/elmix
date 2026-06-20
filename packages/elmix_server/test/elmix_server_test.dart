@@ -747,13 +747,13 @@ void main() {
         final engine = ElmixEngine(storage: storage);
         final server = ElmixServer(
           engine,
-          adminAccounts: const <ServerAdminAccount>[
+          adminAuth: const InMemoryAdminAuthProvider(<ServerAdminAccount>[
             ServerAdminAccount(
               id: AdminAccountIdentifier('admin_1'),
               email: 'admin@example.test',
               password: 'admin-secret',
             ),
-          ],
+          ]),
         );
         await engine.registerCollection(
           const CollectionSchema(
@@ -872,13 +872,13 @@ void main() {
         final engine = ElmixEngine(storage: storage);
         final server = ElmixServer(
           engine,
-          adminAccounts: const <ServerAdminAccount>[
+          adminAuth: const InMemoryAdminAuthProvider(<ServerAdminAccount>[
             ServerAdminAccount(
               id: AdminAccountIdentifier('admin_1'),
               email: 'admin@example.test',
               password: 'admin-secret',
             ),
-          ],
+          ]),
         );
 
         await engine.registerCollection(
@@ -968,13 +968,13 @@ void main() {
       final engine = ElmixEngine(storage: MemoryStorageAdapter());
       final server = ElmixServer(
         engine,
-        adminAccounts: const <ServerAdminAccount>[
+        adminAuth: const InMemoryAdminAuthProvider(<ServerAdminAccount>[
           ServerAdminAccount(
             id: AdminAccountIdentifier('admin_1'),
             email: 'admin@example.test',
             password: 'admin-secret',
           ),
-        ],
+        ]),
       );
 
       final response = await server.handle(
@@ -1004,13 +1004,13 @@ void main() {
       final engine = ElmixEngine(storage: MemoryStorageAdapter());
       final server = ElmixServer(
         engine,
-        adminAccounts: const <ServerAdminAccount>[
+        adminAuth: const InMemoryAdminAuthProvider(<ServerAdminAccount>[
           ServerAdminAccount(
             id: AdminAccountIdentifier('admin_1'),
             email: 'admin@example.test',
             password: 'admin-secret',
           ),
-        ],
+        ]),
       );
 
       final auth = await server.handle(
@@ -1228,13 +1228,13 @@ void main() {
         final engine = ElmixEngine(storage: MemoryStorageAdapter());
         final server = ElmixServer(
           engine,
-          adminAccounts: const <ServerAdminAccount>[
+          adminAuth: const InMemoryAdminAuthProvider(<ServerAdminAccount>[
             ServerAdminAccount(
               id: AdminAccountIdentifier('admin_1'),
               email: 'admin@example.test',
               password: 'admin-secret',
             ),
-          ],
+          ]),
         );
 
         final rejected = await server.handle(
