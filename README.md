@@ -21,6 +21,21 @@ Elmix Core v0 is the first release scope. It proves the smallest end-to-end back
 
 This scope is intentionally smaller than the full long-term Elmix vision. It is the core product loop, not the complete backend platform surface.
 
+## Contributor verification
+
+Elmix public APIs stay consumer-extensible by default. Before handing off Dart
+changes, run the standard checks and the restrictive-class-modifier check:
+
+```bash
+dart analyze
+dart test
+dart run tool/check_restrictive_class_modifiers.dart
+```
+
+The modifier check scans package source and retained prototype source. It fails
+when it finds a restrictive Dart class declaration so the extensibility rule is
+preserved before review.
+
 ## Product Shape
 
 Elmix Core v0 is dynamic schema-first. Collections and fields are runtime metadata that can be managed through admin APIs and persisted by the storage adapter. Dart model generation can be added later after the schema model is stable.
