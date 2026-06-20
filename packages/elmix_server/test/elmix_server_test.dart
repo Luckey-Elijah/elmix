@@ -993,7 +993,53 @@ void main() {
         'id': 'admin_1',
         'email': 'admin@example.test',
       });
+      expect(
+        (response.body! as Map<String, Object?>)['token'],
+        allOf(isA<String>(), isNot(contains('admin_1'))),
+      );
       expect(response.body! as Map<String, Object?>, isNot(contains('record')));
+    });
+
+    test('rejects forged Admin Account bearer tokens after login', () async {
+      final engine = ElmixEngine(storage: MemoryStorageAdapter());
+      final server = ElmixServer(
+        engine,
+        adminAccounts: const <ServerAdminAccount>[
+          ServerAdminAccount(
+            id: AdminAccountIdentifier('admin_1'),
+            email: 'admin@example.test',
+            password: 'admin-secret',
+          ),
+        ],
+      );
+
+      final auth = await server.handle(
+        const ElmixHttpRequest(
+          method: .post,
+          path: '/api/admin/auth-with-password',
+          body: <String, Object?>{
+            'email': 'admin@example.test',
+            'password': 'admin-secret',
+          },
+        ),
+      );
+      final forged = await server.handle(
+        const ElmixHttpRequest(
+          method: .get,
+          path: '/api/admin/collections',
+          headers: <String, String>{
+            'authorization': 'Bearer admin:admin_1',
+          },
+        ),
+      );
+
+      expect(auth.statusCode, 200);
+      expect(forged.statusCode, 401);
+      expect(
+        ((forged.body! as Map<String, Object?>)['error']!
+            as Map<String, Object?>)['code'],
+        'admin_session_required',
+      );
     });
 
     test(
