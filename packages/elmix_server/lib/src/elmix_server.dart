@@ -488,7 +488,8 @@ class ElmixServer {
             ? record.data
             : <String, Object?>{
                 for (final entry in record.data.entries)
-                  if (!AuthPassword.isHash(entry.value)) entry.key: entry.value,
+                  if (!engine.credentialHasher.isHash(entry.value))
+                    entry.key: entry.value,
               },
       ),
     };
@@ -739,7 +740,7 @@ class ElmixServer {
     required String password,
     required Object? stored,
   }) {
-    return AuthPassword.verify(password: password, stored: stored);
+    return engine.credentialHasher.verify(password: password, stored: stored);
   }
 }
 

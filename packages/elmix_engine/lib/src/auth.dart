@@ -64,16 +64,43 @@ class AuthRecordAuthenticationException implements Exception {
   String toString() => 'AuthRecordAuthenticationException: $message';
 }
 
-/// Password hashing helpers for Auth Records and password fields.
-class AuthPassword {
+/// Hashes and verifies stored credentials.
+///
+/// Implement this interface to use a different credential algorithm while
+/// preserving Elmix's password-field and Auth Record behavior.
+abstract class CredentialHasher {
+  /// Creates a credential hasher.
+  const CredentialHasher();
+
+  /// Returns a self-describing stored credential hash for [password].
+  String hash(String password);
+
+  /// Whether [stored] is a credential hash understood by this hasher.
+  bool isHash(Object? stored);
+
+  /// Verifies [password] against [stored].
+  bool verify({
+    required String password,
+    required Object? stored,
+  });
+}
+
+/// PBKDF2-HMAC-SHA256 [CredentialHasher] used by Elmix Core v0 by default.
+///
+/// Stored hashes include their algorithm, iteration count, salt, and derived
+/// key so future hashers can recognize or migrate their own formats.
+class Pbkdf2CredentialHasher implements CredentialHasher {
+  /// Creates the default PBKDF2 credential hasher.
+  const Pbkdf2CredentialHasher();
+
   static const _legacySha256Prefix = 'sha256:';
   static const _pbkdf2Sha256Prefix = r'pbkdf2-sha256$';
   static const _pbkdf2Iterations = 120000;
   static const _saltLength = 16;
   static const _hashLength = 32;
 
-  /// Returns a stored password hash for [password].
-  static String hash(String password) {
+  @override
+  String hash(String password) {
     final salt = _randomBytes(_saltLength);
     final hash = _pbkdf2Sha256(
       password: utf8.encode(password),
@@ -89,15 +116,15 @@ class AuthPassword {
     ].join(r'$');
   }
 
-  /// Whether [stored] is a password hash produced by [hash].
-  static bool isHash(Object? stored) {
+  @override
+  bool isHash(Object? stored) {
     return stored is String &&
         (stored.startsWith(_legacySha256Prefix) ||
             stored.startsWith(_pbkdf2Sha256Prefix));
   }
 
-  /// Verifies [password] against a stored hash.
-  static bool verify({
+  @override
+  bool verify({
     required String password,
     required Object? stored,
   }) {
@@ -116,26 +143,33 @@ class AuthPassword {
       return false;
     }
     final iterations = int.tryParse(parts[1]);
-    if (iterations == null) {
+    if (iterations == null || iterations < 1) {
       return false;
     }
-    final salt = base64Url.decode(parts[2]);
-    final expected = base64Url.decode(parts[3]);
-    final actual = _pbkdf2Sha256(
-      password: utf8.encode(password),
-      salt: salt,
-      iterations: iterations,
-      length: expected.length,
-    );
-    return _constantTimeEquals(actual, expected);
+    try {
+      final salt = base64Url.decode(parts[2]);
+      final expected = base64Url.decode(parts[3]);
+      if (expected.isEmpty) {
+        return false;
+      }
+      final actual = _pbkdf2Sha256(
+        password: utf8.encode(password),
+        salt: salt,
+        iterations: iterations,
+        length: expected.length,
+      );
+      return _constantTimeEquals(actual, expected);
+    } on FormatException {
+      return false;
+    }
   }
 
-  static List<int> _randomBytes(int length) {
+  List<int> _randomBytes(int length) {
     final random = Random.secure();
     return List<int>.generate(length, (_) => random.nextInt(256));
   }
 
-  static Uint8List _pbkdf2Sha256({
+  Uint8List _pbkdf2Sha256({
     required List<int> password,
     required List<int> salt,
     required int iterations,
@@ -152,7 +186,7 @@ class AuthPassword {
     return derivator.process(Uint8List.fromList(password));
   }
 
-  static bool _constantTimeEquals(List<int> left, List<int> right) {
+  bool _constantTimeEquals(List<int> left, List<int> right) {
     if (left.length != right.length) {
       return false;
     }
@@ -161,6 +195,27 @@ class AuthPassword {
       difference |= left[index] ^ right[index];
     }
     return difference == 0;
+  }
+}
+
+/// Compatibility helpers for the default [Pbkdf2CredentialHasher].
+///
+/// Prefer configuring a [CredentialHasher] when constructing an engine.
+class AuthPassword {
+  static const CredentialHasher _defaultHasher = Pbkdf2CredentialHasher();
+
+  /// Returns a stored password hash using Elmix's default credential hasher.
+  static String hash(String password) => _defaultHasher.hash(password);
+
+  /// Whether [stored] is recognized by Elmix's default credential hasher.
+  static bool isHash(Object? stored) => _defaultHasher.isHash(stored);
+
+  /// Verifies [password] using Elmix's default credential hasher.
+  static bool verify({
+    required String password,
+    required Object? stored,
+  }) {
+    return _defaultHasher.verify(password: password, stored: stored);
   }
 }
 
