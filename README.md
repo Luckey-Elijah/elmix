@@ -24,17 +24,15 @@ This scope is intentionally smaller than the full long-term Elmix vision. It is 
 ## Contributor verification
 
 Elmix public APIs stay consumer-extensible by default. Before handing off Dart
-changes, run the standard checks and the restrictive-class-modifier check:
+changes, run the standard workspace verification command:
 
 ```bash
-dart analyze
-dart test
-dart run tool/check_restrictive_class_modifiers.dart
+dart run tool/verify.dart
 ```
 
-The modifier check scans package source and retained prototype source. It fails
-when it finds a restrictive Dart class declaration so the extensibility rule is
-preserved before review.
+The command runs `dart analyze` and scans package source and retained prototype
+source for restrictive Dart class declarations. It fails when either check
+fails, preserving the extensibility rule before review.
 
 ## Product Shape
 
