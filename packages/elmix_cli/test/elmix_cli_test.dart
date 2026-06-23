@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:elmix_cli/elmix_cli.dart';
@@ -238,6 +239,56 @@ void main() {
       expect(served.url.host, '::1');
       expect(served.url.toString(), startsWith('http://[::1]:'));
     });
+
+    test(
+      'serves the Admin Control Plane shell for its route and deep links',
+      () async {
+        final directory = Directory.systemTemp.createTempSync(
+          'elmix_cli_admin_control_plane_test_',
+        );
+        addTearDown(() => directory.deleteSync(recursive: true));
+
+        final served =
+            await ElmixCommandRunner(
+              workingDirectory: directory,
+            ).startServe(<String>[
+              '--db',
+              '${directory.path}/elmix.db',
+              '--port',
+              '0',
+            ]);
+        addTearDown(served.close);
+
+        final client = HttpClient();
+        addTearDown(client.close);
+        final root = await client.getUrl(served.url.resolve('/_/admin'));
+        final deepLink = await client.getUrl(
+          served.url.resolve('/_/admin/collections/posts'),
+        );
+      final script = await client.getUrl(
+        served.url.resolve('/_/admin/main.client.dart.js'),
+        );
+
+        final rootResponse = await root.close();
+        final deepLinkResponse = await deepLink.close();
+        final scriptResponse = await script.close();
+        final rootBody = await utf8.decoder.bind(rootResponse).join();
+        final deepLinkBody = await utf8.decoder.bind(deepLinkResponse).join();
+        final scriptBody = await utf8.decoder.bind(scriptResponse).join();
+
+        expect(rootResponse.statusCode, HttpStatus.ok);
+        expect(deepLinkResponse.statusCode, HttpStatus.ok);
+        expect(scriptResponse.statusCode, HttpStatus.ok);
+        expect(rootBody, contains('<title>Elmix Admin Control Plane</title>'));
+      expect(rootBody, contains('src="main.client.dart.js"'));
+        expect(deepLinkBody, rootBody);
+        expect(
+          scriptResponse.headers.contentType?.mimeType,
+          'application/javascript',
+        );
+        expect(scriptBody, contains('Admin Control Plane'));
+      },
+    );
 
     test('serves a SQLite-backed app consumed by the Dynamic Client', () async {
       final directory = Directory.systemTemp.createTempSync(
