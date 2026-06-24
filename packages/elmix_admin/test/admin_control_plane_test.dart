@@ -277,6 +277,23 @@ void main() {
         ),
       );
     });
+
+    test('restores and clears a browser session bearer token', () async {
+      final transport = RecordingAdminApiTransport();
+      final api = AdminApiClient(
+        baseUrl: Uri.parse('http://localhost'),
+        transport: transport,
+      )..bearerToken = 'saved-token';
+      await api.listCollectionSchemas();
+      api.clearBearerToken();
+      await api.listCollectionSchemas();
+
+      expect(api.bearerToken, isNull);
+      expect(
+        transport.requests.map((request) => request.headers['authorization']),
+        <String?>['Bearer saved-token', null],
+      );
+    });
   });
 }
 
@@ -288,6 +305,19 @@ class StubAdminApiTransport extends AdminApiTransport {
   @override
   Future<AdminApiResponse> send(AdminApiRequest request) async {
     return response;
+  }
+}
+
+class RecordingAdminApiTransport extends AdminApiTransport {
+  final List<AdminApiRequest> requests = <AdminApiRequest>[];
+
+  @override
+  Future<AdminApiResponse> send(AdminApiRequest request) async {
+    requests.add(request);
+    return const AdminApiResponse(
+      statusCode: 200,
+      body: <String, Object?>{'items': <Object?>[]},
+    );
   }
 }
 
