@@ -429,7 +429,8 @@ class ElmixServer {
             ? record.data
             : <String, Object?>{
                 for (final entry in record.data.entries)
-                  if (!AuthPassword.isHash(entry.value)) entry.key: entry.value,
+                  if (!engine.credentialHasher.isHash(entry.value))
+                    entry.key: entry.value,
               },
       ),
     };
@@ -757,7 +758,7 @@ class EngineAdminAuthProvider implements AdminAuthProvider {
           ),
         );
     for (final record in page.items) {
-      if (AuthPassword.verify(
+      if (engine.credentialHasher.verify(
         password: password,
         stored: record.data['passwordHash'],
       )) {

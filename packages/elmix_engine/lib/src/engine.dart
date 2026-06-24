@@ -12,9 +12,15 @@ import 'package:elmix_engine/src/storage_adapter.dart';
 /// while keeping HTTP, SQLite, admin UI, and CLI details outside the package.
 class ElmixEngine {
   /// Creates an engine backed by [storage].
-  ElmixEngine({required StorageAdapter storage}) : _storage = storage;
+  ElmixEngine({
+    required StorageAdapter storage,
+    this.credentialHasher = const Pbkdf2CredentialHasher(),
+  }) : _storage = storage;
 
   final StorageAdapter _storage;
+
+  /// Credential hasher used for password fields and Auth Record login.
+  final CredentialHasher credentialHasher;
   final List<ActionHook> _hooks = [];
   final List<AuthenticationActionHook> _authenticationHooks = [];
 
@@ -74,6 +80,7 @@ class ElmixEngine {
       storage: _storage,
       context: context,
       hooks: _hooks,
+      credentialHasher: credentialHasher,
     );
   }
 
@@ -117,7 +124,7 @@ class ElmixEngine {
       ),
     );
     final matching = page.items.where(
-      (record) => AuthPassword.verify(
+      (record) => credentialHasher.verify(
         password: password,
         stored: record.data['password'],
       ),
@@ -191,9 +198,11 @@ class CollectionHandle {
     required StorageAdapter storage,
     RequestContext context = RequestContext.anonymous,
     List<ActionHook> hooks = const <ActionHook>[],
+    CredentialHasher credentialHasher = const Pbkdf2CredentialHasher(),
   }) : _storage = storage,
        _context = context,
-       _hooks = hooks;
+       _hooks = hooks,
+       _credentialHasher = credentialHasher;
 
   /// The collection name this handle operates on.
   final String name;
@@ -201,6 +210,7 @@ class CollectionHandle {
   final StorageAdapter _storage;
   final RequestContext _context;
   final List<ActionHook> _hooks;
+  final CredentialHasher _credentialHasher;
 
   /// Creates [record] in this collection.
   Future<Record> create(Record record) async {
@@ -523,8 +533,8 @@ class CollectionHandle {
         for (final entry in record.data.entries)
           entry.key:
               passwordFields.contains(entry.key) &&
-                  !AuthPassword.isHash(entry.value)
-              ? AuthPassword.hash(entry.value! as String)
+                  !_credentialHasher.isHash(entry.value)
+              ? _credentialHasher.hash(entry.value! as String)
               : entry.value,
       },
     );

@@ -674,6 +674,52 @@ void main() {
       },
     );
 
+    test('uses the configured Credential Hasher for Auth Records', () async {
+      final storage = InMemoryStorageAdapter();
+      final hasher = RecordingCredentialHasher();
+      final engine = ElmixEngine(
+        storage: storage,
+        credentialHasher: hasher,
+      );
+      await engine.registerCollection(
+        const CollectionSchema.auth(
+          name: 'members',
+          fields: <SchemaField>[
+            SchemaField(name: 'email', type: .email, required: true),
+            SchemaField(name: 'password', type: .password, required: true),
+          ],
+          accessRules: <CollectionOperation, AccessRule>{},
+        ),
+      );
+
+      final created = await engine
+          .collection('members')
+          .create(
+            const Record(
+              collection: 'members',
+              id: RecordIdentifier('member_1'),
+              data: <String, Object?>{
+                'email': 'member@example.test',
+                'password': 'secret',
+              },
+            ),
+          );
+      final authenticated = await engine.authenticateAuthRecordWithPassword(
+        collection: 'members',
+        email: 'member@example.test',
+        password: 'secret',
+      );
+
+      expect(created.data['password'], 'test-hash:secret');
+      expect(authenticated.id.value, 'member_1');
+      expect(hasher.hashes, <String>['secret']);
+      expect(hasher.verifications, isNotEmpty);
+      expect(
+        hasher.verifications,
+        everyElement(equals(('secret', 'test-hash:secret'))),
+      );
+    });
+
     test('creates, lists, views, updates, and deletes records', () async {
       final storage = InMemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);
@@ -1113,5 +1159,27 @@ class RecordingAuthenticationActionHook extends AuthenticationActionHook {
   @override
   Future<void> call(AuthenticationActionHookContext context) async {
     contexts.add(context);
+  }
+}
+
+class RecordingCredentialHasher implements CredentialHasher {
+  final List<String> hashes = <String>[];
+  final List<(String, Object?)> verifications = <(String, Object?)>[];
+
+  @override
+  String hash(String password) {
+    hashes.add(password);
+    return 'test-hash:$password';
+  }
+
+  @override
+  bool isHash(Object? stored) {
+    return stored is String && stored.startsWith('test-hash:');
+  }
+
+  @override
+  bool verify({required String password, required Object? stored}) {
+    verifications.add((password, stored));
+    return stored == 'test-hash:$password';
   }
 }

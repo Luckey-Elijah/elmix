@@ -152,10 +152,13 @@ class AdminApiClient {
   /// Transport used to send Admin API requests.
   final AdminApiTransport transport;
 
-  String? _bearerToken;
-
   /// Bearer token used for Admin API requests, if authenticated.
-  String? get bearerToken => _bearerToken;
+  String? bearerToken;
+
+  /// Clears the bearer token used for Admin API requests.
+  void clearBearerToken() {
+    bearerToken = null;
+  }
 
   /// Authenticates an Admin Account by email and password.
   Future<AdminSession> authWithPassword({
@@ -171,7 +174,7 @@ class AdminApiClient {
       },
     );
     final session = AdminSession.fromJson(_expectObject(response));
-    _bearerToken = session.token;
+    bearerToken = session.token;
     return session;
   }
 
@@ -320,7 +323,7 @@ class AdminApiClient {
             ? baseUrl.replace(path: path)
             : baseUrl.replace(pathSegments: pathSegments),
         headers: <String, String>{
-          if (_bearerToken != null) 'authorization': 'Bearer $_bearerToken',
+          if (bearerToken != null) 'authorization': 'Bearer $bearerToken',
         },
         body: body,
       ),
