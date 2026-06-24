@@ -8,13 +8,34 @@ void main() {
   group('workspace verification', () {
     late Directory fixture;
 
-    setUp(() {
+    setUp(() async {
       fixture = Directory.systemTemp.createTempSync('elmix-verify-');
       File('${fixture.path}/pubspec.yaml').writeAsStringSync('''
 name: verification_fixture
 environment:
   sdk: ^3.11.0
+dev_dependencies:
+  test: ^1.25.0
 ''');
+      writeSource(
+        fixture,
+        'test/passing_test.dart',
+        '''
+import 'package:test/test.dart';
+
+void main() {
+  test('passes', () => expect(true, isTrue));
+}
+''',
+      );
+      final dependencies = await Process.run(
+        Platform.resolvedExecutable,
+        const <String>['pub', 'get'],
+        workingDirectory: fixture.path,
+      );
+      if (dependencies.exitCode != 0) {
+        throw StateError(dependencies.stderr.toString());
+      }
     });
 
     tearDown(() => fixture.deleteSync(recursive: true));
@@ -69,6 +90,27 @@ environment:
 
       expect(result.exitCode, isNonZero);
       expect(result.stdout, contains('error'));
+      expect(result.stdout, isNot(contains('Workspace verification passed.')));
+    });
+
+    test('fails when a workspace test fails', () async {
+      writeSource(
+        fixture,
+        'test/failing_test.dart',
+        '''
+import 'package:test/test.dart';
+
+void main() {
+  test('intentional failure', () => fail('expected verification failure'));
+}
+''',
+      );
+      final result = await Process.run(
+        Platform.resolvedExecutable,
+        [verifier.path, '--root', fixture.path],
+      );
+
+      expect(result.exitCode, isNonZero);
       expect(result.stdout, isNot(contains('Workspace verification passed.')));
     });
   });

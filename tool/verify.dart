@@ -13,6 +13,17 @@ Future<void> main(List<String> arguments) async {
     return;
   }
 
+  final tests = await Process.run(
+    Platform.resolvedExecutable,
+    const <String>['test'],
+    workingDirectory: root.path,
+  );
+  _write(tests);
+  if (tests.exitCode != 0) {
+    exitCode = tests.exitCode;
+    return;
+  }
+
   final checker = File.fromUri(
     Platform.script.resolve('check_restrictive_class_modifiers.dart'),
   );
