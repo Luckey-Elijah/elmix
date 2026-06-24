@@ -19,7 +19,7 @@ class AdminBootstrap {
       id: RecordIdentifier(email),
       data: <String, Object?>{
         'email': email,
-        'passwordHash': AuthPassword.hash(password),
+        'passwordHash': engine.credentialHasher.hash(password),
       },
     );
     return engine

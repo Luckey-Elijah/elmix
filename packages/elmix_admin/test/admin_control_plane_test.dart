@@ -24,6 +24,53 @@ void main() {
       expect(admin?.data['passwordHash'], isNot('admin-secret'));
       expect(admin?.data['passwordHash'], startsWith(r'pbkdf2-sha256$'));
     });
+
+    test('uses the Engine Credential Hasher for Admin Accounts', () async {
+      final engine = ElmixEngine(
+        storage: MemoryStorageAdapter(),
+        credentialHasher: AdminCredentialHasher(),
+      );
+      final bootstrap = AdminBootstrap(engine);
+
+      await bootstrap.createAdminAccount(
+        email: 'admin@example.test',
+        password: 'admin-secret',
+      );
+
+      final admin = await engine
+          .collection('_admins', context: RequestContext.system)
+          .get(const RecordIdentifier('admin@example.test'));
+
+      expect(admin?.data['passwordHash'], 'admin-hash:admin-secret');
+    });
+
+    test(
+      'verifies Admin Account login with the Engine Credential Hasher',
+      () async {
+        final engine = ElmixEngine(
+          storage: MemoryStorageAdapter(),
+          credentialHasher: AdminCredentialHasher(),
+        );
+        final bootstrap = AdminBootstrap(engine);
+        await bootstrap.createAdminAccount(
+          email: 'admin@example.test',
+          password: 'admin-secret',
+        );
+
+        final response = await ElmixServer(engine).handle(
+          const ElmixHttpRequest(
+            method: .post,
+            path: '/api/admin/auth-with-password',
+            body: <String, Object?>{
+              'email': 'admin@example.test',
+              'password': 'admin-secret',
+            },
+          ),
+        );
+
+        expect(response.statusCode, 200);
+      },
+    );
   });
 
   group('AdminControlPlane', () {
@@ -277,6 +324,23 @@ void main() {
         ),
       );
     });
+
+    test('restores and clears a browser session bearer token', () async {
+      final transport = RecordingAdminApiTransport();
+      final api = AdminApiClient(
+        baseUrl: Uri.parse('http://localhost'),
+        transport: transport,
+      )..bearerToken = 'saved-token';
+      await api.listCollectionSchemas();
+      api.clearBearerToken();
+      await api.listCollectionSchemas();
+
+      expect(api.bearerToken, isNull);
+      expect(
+        transport.requests.map((request) => request.headers['authorization']),
+        <String?>['Bearer saved-token', null],
+      );
+    });
   });
 }
 
@@ -288,6 +352,34 @@ class StubAdminApiTransport extends AdminApiTransport {
   @override
   Future<AdminApiResponse> send(AdminApiRequest request) async {
     return response;
+  }
+}
+
+class AdminCredentialHasher implements CredentialHasher {
+  @override
+  String hash(String password) => 'admin-hash:$password';
+
+  @override
+  bool isHash(Object? stored) {
+    return stored is String && stored.startsWith('admin-hash:');
+  }
+
+  @override
+  bool verify({required String password, required Object? stored}) {
+    return stored == 'admin-hash:$password';
+  }
+}
+
+class RecordingAdminApiTransport extends AdminApiTransport {
+  final List<AdminApiRequest> requests = <AdminApiRequest>[];
+
+  @override
+  Future<AdminApiResponse> send(AdminApiRequest request) async {
+    requests.add(request);
+    return const AdminApiResponse(
+      statusCode: 200,
+      body: <String, Object?>{'items': <Object?>[]},
+    );
   }
 }
 
