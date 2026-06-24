@@ -21,6 +21,19 @@ Elmix Core v0 is the first release scope. It proves the smallest end-to-end back
 
 This scope is intentionally smaller than the full long-term Elmix vision. It is the core product loop, not the complete backend platform surface.
 
+## Contributor verification
+
+Elmix public APIs stay consumer-extensible by default. Before handing off Dart
+changes, run the standard workspace verification command:
+
+```bash
+dart run tool/verify.dart
+```
+
+The command runs `dart analyze` and scans package source and retained prototype
+source for restrictive Dart class declarations. It fails when either check
+fails, preserving the extensibility rule before review.
+
 ## Product Shape
 
 Elmix Core v0 is dynamic schema-first. Collections and fields are runtime metadata that can be managed through admin APIs and persisted by the storage adapter. Dart model generation can be added later after the schema model is stable.
@@ -271,3 +284,13 @@ The following are important to the longer-term Elmix vision but intentionally ex
 - polished embedded/plugin framework
 
 The architecture should avoid blocking these features, but they are not acceptance criteria for the first release.
+
+Keep the workspace itself within the Initial Module Set while Core v0 is in
+development:
+
+```bash
+dart run tool/check_core_v0_scope.dart
+```
+
+Adding a future-only package requires an explicit product decision rather than
+quietly widening the release scope.
