@@ -17,8 +17,8 @@ void main() {
       final schema = await engine.getCollectionSchema('_admins');
       expect(schema, isNotNull);
       expect(schema!.isAuthCollection, false);
-      final admin = await engine
-          .collection('_admins', context: RequestContext.system)
+      final admin = await engine.controlPlane
+          .collection('_admins')
           .get(const RecordIdentifier('admin@example.test'));
       expect(admin?.data['email'], 'admin@example.test');
       expect(admin?.data['passwordHash'], isNot('admin-secret'));
@@ -37,8 +37,8 @@ void main() {
         password: 'admin-secret',
       );
 
-      final admin = await engine
-          .collection('_admins', context: RequestContext.system)
+      final admin = await engine.controlPlane
+          .collection('_admins')
           .get(const RecordIdentifier('admin@example.test'));
 
       expect(admin?.data['passwordHash'], 'admin-hash:admin-secret');

@@ -146,8 +146,8 @@ void main() {
           },
         ),
       );
-      await engine
-          .collection('_admins', context: RequestContext.system)
+      await engine.controlPlane
+          .collection('_admins')
           .create(
             const AuthRecord(
               collection: '_admins',
@@ -866,7 +866,8 @@ void main() {
     });
 
     test(
-      'uses system context for authenticated Admin API record routes',
+      'uses the control-plane capability for authenticated Admin API '
+      'record routes',
       () async {
         final storage = MemoryStorageAdapter();
         final engine = ElmixEngine(storage: storage);
