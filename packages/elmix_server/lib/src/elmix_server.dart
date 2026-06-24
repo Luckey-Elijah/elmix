@@ -258,8 +258,8 @@ class ElmixServer {
     if (schema == null) {
       return const <AdminAccount>[];
     }
-    final page = await engine
-        .collection('_admins', context: RequestContext.system)
+    final page = await engine.controlPlane
+        .collection('_admins')
         .list(
           query: const QueryExpression(
             pagination: QueryPagination(perPage: 1000),
@@ -294,10 +294,7 @@ class ElmixServer {
     }
 
     final id = RecordIdentifier(email);
-    final accounts = engine.collection(
-      '_admins',
-      context: RequestContext.system,
-    );
+    final accounts = engine.controlPlane.collection('_admins');
     if (await accounts.get(id) != null) {
       return _error(
         statusCode: 409,
@@ -341,10 +338,7 @@ class ElmixServer {
       );
     }
 
-    final accounts = engine.collection(
-      '_admins',
-      context: RequestContext.system,
-    );
+    final accounts = engine.controlPlane.collection('_admins');
     final existing = await accounts.get(RecordIdentifier(id));
     if (existing == null) {
       return _error(
@@ -374,10 +368,7 @@ class ElmixServer {
   }
 
   Future<ElmixHttpResponse> _deleteAdminAccount(String id) async {
-    final accounts = engine.collection(
-      '_admins',
-      context: RequestContext.system,
-    );
+    final accounts = engine.controlPlane.collection('_admins');
     final existing = await accounts.get(RecordIdentifier(id));
     if (existing == null) {
       return _error(

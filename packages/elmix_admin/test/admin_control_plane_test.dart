@@ -225,8 +225,8 @@ void main() {
           email: 'second@example.test',
           password: 'second-secret',
         );
-        final stored = await engine
-            .collection('_admins', context: RequestContext.system)
+        final stored = await engine.controlPlane
+            .collection('_admins')
             .get(const RecordIdentifier('second@example.test'));
 
         expect(created.id, 'second@example.test');
