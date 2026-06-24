@@ -24,6 +24,9 @@ class ElmixEngine {
   final List<ActionHook> _hooks = [];
   final List<AuthenticationActionHook> _authenticationHooks = [];
 
+  /// Explicit capability for trusted control-plane collection operations.
+  late final ControlPlane controlPlane = ControlPlane._(this);
+
   /// Registers a new collection schema.
   Future<void> registerCollection(CollectionSchema schema) async {
     final existing = await _storage.getCollectionSchema(schema.name);
@@ -79,6 +82,15 @@ class ElmixEngine {
       name: name,
       storage: _storage,
       context: context,
+      hooks: _hooks,
+      credentialHasher: credentialHasher,
+    );
+  }
+
+  CollectionHandle _controlPlaneCollection(String name) {
+    return CollectionHandle._controlPlane(
+      name: name,
+      storage: _storage,
       hooks: _hooks,
       credentialHasher: credentialHasher,
     );
@@ -190,6 +202,18 @@ class ElmixEngine {
   }
 }
 
+/// Explicit capability for trusted control-plane collection operations.
+class ControlPlane {
+  ControlPlane._(this._engine);
+
+  final ElmixEngine _engine;
+
+  /// Opens control-plane record operations for the collection named [name].
+  CollectionHandle collection(String name) {
+    return _engine._controlPlaneCollection(name);
+  }
+}
+
 /// Record use cases scoped to one collection.
 class CollectionHandle {
   /// Creates a collection-scoped record API backed by [storage].
@@ -202,7 +226,19 @@ class CollectionHandle {
   }) : _storage = storage,
        _context = context,
        _hooks = hooks,
-       _credentialHasher = credentialHasher;
+       _credentialHasher = credentialHasher,
+       _isControlPlane = false;
+
+  CollectionHandle._controlPlane({
+    required this.name,
+    required StorageAdapter storage,
+    List<ActionHook> hooks = const <ActionHook>[],
+    CredentialHasher credentialHasher = const Pbkdf2CredentialHasher(),
+  }) : _storage = storage,
+       _context = RequestContext.anonymous,
+       _hooks = hooks,
+       _credentialHasher = credentialHasher,
+       _isControlPlane = true;
 
   /// The collection name this handle operates on.
   final String name;
@@ -211,6 +247,7 @@ class CollectionHandle {
   final RequestContext _context;
   final List<ActionHook> _hooks;
   final CredentialHasher _credentialHasher;
+  final bool _isControlPlane;
 
   /// Creates [record] in this collection.
   Future<Record> create(Record record) async {
@@ -442,7 +479,7 @@ class CollectionHandle {
     Record? record,
     Record? requestRecord,
   }) {
-    if (_context.isSystem) {
+    if (_isControlPlane) {
       return;
     }
 

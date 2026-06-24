@@ -22,9 +22,7 @@ class AdminBootstrap {
         'passwordHash': engine.credentialHasher.hash(password),
       },
     );
-    return engine
-        .collection('_admins', context: RequestContext.system)
-        .create(admin);
+    return engine.controlPlane.collection('_admins').create(admin);
   }
 
   Future<void> _ensureAdminCollection() async {

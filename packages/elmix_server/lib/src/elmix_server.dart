@@ -162,7 +162,7 @@ class ElmixServer {
       return _handleRecordCollectionRoute(
         request: request,
         collection: collection,
-        context: RequestContext.system,
+        controlPlane: engine.controlPlane,
       );
     }
 
@@ -178,7 +178,7 @@ class ElmixServer {
         request: request,
         collection: collection,
         id: RecordIdentifier(id),
-        context: RequestContext.system,
+        controlPlane: engine.controlPlane,
       );
     }
     return null;
@@ -258,31 +258,30 @@ class ElmixServer {
     required ElmixHttpRequest request,
     required String collection,
     RequestContext? context,
+    ControlPlane? controlPlane,
   }) async {
     final requestContext = context ?? _contextForRequest(request);
+    final records =
+        controlPlane?.collection(collection) ??
+        engine.collection(
+          collection,
+          context: requestContext,
+        );
     if (request.method == .get) {
-      final page = await engine
-          .collection(
-            collection,
-            context: requestContext,
-          )
-          .list(query: await _queryExpressionFromRequest(request, collection));
+      final page = await records.list(
+        query: await _queryExpressionFromRequest(request, collection),
+      );
       return ElmixHttpResponse.ok(_recordPageToJson(page));
     }
     if (request.method == .post) {
       final schema = await engine.getCollectionSchema(collection);
-      final created = await engine
-          .collection(
-            collection,
-            context: requestContext,
-          )
-          .create(
-            _recordFromJson(
-              collection: collection,
-              body: request.body,
-              schema: schema,
-            ),
-          );
+      final created = await records.create(
+        _recordFromJson(
+          collection: collection,
+          body: request.body,
+          schema: schema,
+        ),
+      );
       return ElmixHttpResponse.created(_recordToJson(created));
     }
     return _notFound();
@@ -293,12 +292,15 @@ class ElmixServer {
     required String collection,
     required RecordIdentifier id,
     RequestContext? context,
+    ControlPlane? controlPlane,
   }) async {
     final requestContext = context ?? _contextForRequest(request);
-    final records = engine.collection(
-      collection,
-      context: requestContext,
-    );
+    final records =
+        controlPlane?.collection(collection) ??
+        engine.collection(
+          collection,
+          context: requestContext,
+        );
     if (request.method == .get) {
       final record = await records.get(id);
       if (record == null) {
@@ -748,8 +750,8 @@ class EngineAdminAuthProvider implements AdminAuthProvider {
   }) async {
     final schema = await engine.getCollectionSchema('_admins');
     if (schema == null) return null;
-    final page = await engine
-        .collection('_admins', context: RequestContext.system)
+    final page = await engine.controlPlane
+        .collection('_admins')
         .list(
           query: QueryExpression(
             filters: <QueryFilter>[
@@ -775,8 +777,8 @@ class EngineAdminAuthProvider implements AdminAuthProvider {
   Future<bool> hasAccounts() async {
     final schema = await engine.getCollectionSchema('_admins');
     if (schema == null) return false;
-    final page = await engine
-        .collection('_admins', context: RequestContext.system)
+    final page = await engine.controlPlane
+        .collection('_admins')
         .list(
           query: const QueryExpression(pagination: QueryPagination(perPage: 1)),
         );
