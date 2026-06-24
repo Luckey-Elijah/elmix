@@ -60,6 +60,23 @@ void main() {
       expect(result.stderr, contains('sealed class'));
     });
 
+    test('reports a banned modifier preceded by metadata', () async {
+      writeSource(
+        fixture,
+        'packages/example/lib/example.dart',
+        '@immutable final class Example {}',
+      );
+
+      final result = await Process.run(
+        Platform.resolvedExecutable,
+        [checker.path, '--root', fixture.path],
+      );
+
+      expect(result.exitCode, 1);
+      expect(result.stderr, contains('packages/example/lib/example.dart:1'));
+      expect(result.stderr, contains('final class'));
+    });
+
     test('ignores explanatory comments in package source', () async {
       writeSource(
         fixture,
