@@ -278,6 +278,91 @@ void main() {
       );
     },
   );
+
+  testComponents(
+    'opens a dedicated Admin Accounts screen without exposing _admins',
+    (tester) async {
+      final sessions = MemoryAdminSessionStore()
+        ..saveBearerToken('saved-token');
+      tester.pumpComponent(
+        adminApp(
+          sessions: sessions,
+          transport: AdminAccountsAdminApiTransport(),
+        ),
+      );
+
+      await tester.pump();
+      await tester.click(find.componentWithText(button, 'Admin Accounts'));
+
+      expect(find.text('Admin Accounts'), findsOneComponent);
+      expect(find.text('admin@example.test'), findsOneComponent);
+      expect(find.text('_admins'), findsNothing);
+    },
+  );
+
+  testComponents(
+    'offers Admin Account creation from the dedicated screen',
+    (tester) async {
+      final sessions = MemoryAdminSessionStore()
+        ..saveBearerToken('saved-token');
+      tester.pumpComponent(
+        adminApp(
+          sessions: sessions,
+          transport: AdminAccountsAdminApiTransport(),
+        ),
+      );
+
+      await tester.pump();
+      await tester.click(find.componentWithText(button, 'Admin Accounts'));
+
+      expect(find.text('Create Admin Account'), findsOneComponent);
+    },
+  );
+
+  testComponents(
+    'offers password change and deletion for listed Admin Accounts',
+    (tester) async {
+      final sessions = MemoryAdminSessionStore()
+        ..saveBearerToken('saved-token');
+      tester.pumpComponent(
+        adminApp(
+          sessions: sessions,
+          transport: AdminAccountsAdminApiTransport(),
+        ),
+      );
+
+      await tester.pump();
+      await tester.click(find.componentWithText(button, 'Admin Accounts'));
+
+      expect(find.text('Change Admin Account Password'), findsOneComponent);
+      expect(find.text('Delete Admin Account'), findsOneComponent);
+    },
+  );
+
+  testComponents(
+    'shows a last-Admin-Account deletion rejection',
+    (tester) async {
+      final sessions = MemoryAdminSessionStore()
+        ..saveBearerToken('saved-token');
+      tester.pumpComponent(
+        adminApp(
+          sessions: sessions,
+          transport: LastAdminAccountAdminApiTransport(),
+        ),
+      );
+
+      await tester.pump();
+      await tester.click(find.componentWithText(button, 'Admin Accounts'));
+      await tester.click(
+        find.componentWithText(button, 'Delete Admin Account'),
+      );
+
+      expect(
+        find.text('The last remaining Admin Account cannot be deleted.'),
+        findsOneComponent,
+      );
+    },
+  );
 }
 
 AdminApp adminApp({
@@ -373,5 +458,46 @@ class ExpiredSessionAdminApiTransport extends AdminApiTransport {
         },
       },
     );
+  }
+}
+
+class AdminAccountsAdminApiTransport extends AdminApiTransport {
+  @override
+  Future<AdminApiResponse> send(AdminApiRequest request) async {
+    if (request.url.path == '/api/admin/accounts') {
+      return const AdminApiResponse(
+        statusCode: 200,
+        body: <String, Object?>{
+          'items': <Object?>[
+            <String, Object?>{
+              'id': 'admin@example.test',
+              'email': 'admin@example.test',
+            },
+          ],
+        },
+      );
+    }
+    return const AdminApiResponse(
+      statusCode: 200,
+      body: <String, Object?>{'items': <Object?>[]},
+    );
+  }
+}
+
+class LastAdminAccountAdminApiTransport extends AdminAccountsAdminApiTransport {
+  @override
+  Future<AdminApiResponse> send(AdminApiRequest request) async {
+    if (request.method == 'DELETE') {
+      return const AdminApiResponse(
+        statusCode: 409,
+        body: <String, Object?>{
+          'error': <String, Object?>{
+            'code': 'last_admin_account',
+            'message': 'The last remaining Admin Account cannot be deleted.',
+          },
+        },
+      );
+    }
+    return super.send(request);
   }
 }

@@ -29,10 +29,15 @@ class AdminApp extends StatefulComponent {
 
 class _AdminAppState extends State<AdminApp> {
   final _accessRuleExpressions = <CollectionOperation, String>{};
+  var _adminAccounts = const <AdminAccountView>[];
   final _recordRawValues = <String, String>{};
   var _email = '';
   var _newCollectionName = '';
+  var _newAdminEmail = '';
+  var _newAdminPassword = '';
+  var _adminAccountPassword = '';
   var _password = '';
+  var _creatingAdminAccount = false;
   var _creatingCollection = false;
   var _fieldName = '';
   var _fieldRequired = false;
@@ -44,8 +49,10 @@ class _AdminAppState extends State<AdminApp> {
   var _savingField = false;
   var _savingRecord = false;
   var _schemas = const <CollectionSchema>[];
+  var _showingAdminAccounts = false;
   var _records = const <Record>[];
   SchemaField? _editingField;
+  AdminAccountView? _editingAdminAccount;
   Record? _editingRecord;
   CollectionSchema? _selectedSchema;
   var _recordId = '';
@@ -70,7 +77,9 @@ class _AdminAppState extends State<AdminApp> {
         h1([Component.text('Elmix Admin Control Plane')]),
       ]),
       if (_signedIn)
-        _selectedSchema == null
+        _showingAdminAccounts
+            ? _buildAdminAccounts()
+            : _selectedSchema == null
             ? _buildCollectionSchemaList()
             : _buildCollectionSchemaDetail(_selectedSchema!)
       else
@@ -99,6 +108,11 @@ class _AdminAppState extends State<AdminApp> {
   Component _buildCollectionSchemaList() {
     return section([
       const h2([Component.text('Collection Schemas')]),
+      button(
+        const [Component.text('Admin Accounts')],
+        type: ButtonType.button,
+        onClick: () => unawaited(_openAdminAccounts()),
+      ),
       if (_error != null) p([Component.text(_error!)]),
       const h3([Component.text('Create Collection Schema')]),
       const label(
@@ -125,6 +139,97 @@ class _AdminAppState extends State<AdminApp> {
               [Component.text(schema.name)],
               type: ButtonType.button,
               onClick: () => _openCollectionSchema(schema),
+            ),
+          ]),
+      ]),
+    ]);
+  }
+
+  Component _buildAdminAccounts() {
+    return section([
+      button(
+        const [Component.text('Back to Collection Schemas')],
+        type: ButtonType.button,
+        onClick: () {
+          setState(() {
+            _showingAdminAccounts = false;
+            _error = null;
+          });
+        },
+      ),
+      const h2([Component.text('Admin Accounts')]),
+      if (_error != null) p([Component.text(_error!)]),
+      const h3([Component.text('Create Admin Account')]),
+      const label(
+        htmlFor: 'admin-account-email',
+        [Component.text('Admin Account email')],
+      ),
+      input<String>(
+        id: 'admin-account-email',
+        type: InputType.email,
+        name: 'admin-account-email',
+        value: _newAdminEmail,
+        onInput: (value) => _newAdminEmail = value,
+      ),
+      const label(
+        htmlFor: 'admin-account-password',
+        [Component.text('Admin Account password')],
+      ),
+      input<String>(
+        id: 'admin-account-password',
+        type: InputType.password,
+        name: 'admin-account-password',
+        value: _newAdminPassword,
+        onInput: (value) => _newAdminPassword = value,
+      ),
+      button(
+        const [Component.text('Save Admin Account')],
+        type: ButtonType.button,
+        disabled: _creatingAdminAccount,
+        onClick: () => unawaited(_createAdminAccount()),
+      ),
+      if (_editingAdminAccount != null) ...[
+        h3([
+          Component.text(
+            'Set password for ${_editingAdminAccount!.email}',
+          ),
+        ]),
+        const label(
+          htmlFor: 'changed-admin-account-password',
+          [Component.text('New Admin Account password')],
+        ),
+        input<String>(
+          id: 'changed-admin-account-password',
+          type: InputType.password,
+          name: 'changed-admin-account-password',
+          value: _adminAccountPassword,
+          onInput: (value) => _adminAccountPassword = value,
+        ),
+        button(
+          const [Component.text('Save Admin Account Password')],
+          type: ButtonType.button,
+          onClick: () => unawaited(_changeAdminAccountPassword()),
+        ),
+      ],
+      ul([
+        for (final account in _adminAccounts)
+          li([
+            Component.text(account.email),
+            button(
+              const [Component.text('Change Admin Account Password')],
+              type: ButtonType.button,
+              onClick: () {
+                setState(() {
+                  _editingAdminAccount = account;
+                  _adminAccountPassword = '';
+                  _error = null;
+                });
+              },
+            ),
+            button(
+              const [Component.text('Delete Admin Account')],
+              type: ButtonType.button,
+              onClick: () => unawaited(_deleteAdminAccount(account)),
             ),
           ]),
       ]),
@@ -578,6 +683,139 @@ class _AdminAppState extends State<AdminApp> {
     });
   }
 
+  Future<void> _openAdminAccounts() async {
+    setState(() {
+      _showingAdminAccounts = true;
+      _error = null;
+    });
+    try {
+      final accounts = await component.controlPlane.listAdminAccounts();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _adminAccounts = accounts;
+      });
+    } on AdminApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      if (_handleUnauthorizedSession(error)) {
+        return;
+      }
+      setState(() {
+        _error = error.message ?? 'Could not load Admin Accounts.';
+      });
+    }
+  }
+
+  Future<void> _createAdminAccount() async {
+    final email = _newAdminEmail.trim();
+    if (email.isEmpty || _newAdminPassword.isEmpty) {
+      setState(() {
+        _error = 'An Admin Account email and password are required.';
+      });
+      return;
+    }
+    setState(() {
+      _creatingAdminAccount = true;
+      _error = null;
+    });
+    try {
+      final account = await component.controlPlane.createAdminAccount(
+        email: email,
+        password: _newAdminPassword,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _adminAccounts = <AdminAccountView>[..._adminAccounts, account];
+        _newAdminEmail = '';
+        _newAdminPassword = '';
+        _creatingAdminAccount = false;
+      });
+    } on AdminApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      if (_handleUnauthorizedSession(error)) {
+        return;
+      }
+      setState(() {
+        _creatingAdminAccount = false;
+        _error = error.message ?? 'Could not create the Admin Account.';
+      });
+    }
+  }
+
+  Future<void> _changeAdminAccountPassword() async {
+    final account = _editingAdminAccount!;
+    if (_adminAccountPassword.isEmpty) {
+      setState(() {
+        _error = 'An Admin Account password is required.';
+      });
+      return;
+    }
+    try {
+      final changed = await component.controlPlane.changeAdminAccountPassword(
+        id: account.id,
+        password: _adminAccountPassword,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _adminAccounts = <AdminAccountView>[
+          for (final existing in _adminAccounts)
+            if (existing.id == changed.id) changed else existing,
+        ];
+        _editingAdminAccount = null;
+        _adminAccountPassword = '';
+      });
+    } on AdminApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      if (_handleUnauthorizedSession(error)) {
+        return;
+      }
+      setState(() {
+        _error =
+            error.message ?? 'Could not change the Admin Account password.';
+      });
+    }
+  }
+
+  Future<void> _deleteAdminAccount(AdminAccountView account) async {
+    try {
+      await component.controlPlane.deleteAdminAccount(account.id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _adminAccounts = <AdminAccountView>[
+          for (final existing in _adminAccounts)
+            if (existing.id != account.id) existing,
+        ];
+        if (_editingAdminAccount?.id == account.id) {
+          _editingAdminAccount = null;
+          _adminAccountPassword = '';
+        }
+      });
+    } on AdminApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      if (_handleUnauthorizedSession(error)) {
+        return;
+      }
+      setState(() {
+        _error = error.message ?? 'Could not delete the Admin Account.';
+      });
+    }
+  }
+
   bool _handleUnauthorizedSession(AdminApiException error) {
     if (error.statusCode != 401) {
       return false;
@@ -585,6 +823,7 @@ class _AdminAppState extends State<AdminApp> {
     component.sessions.clearBearerToken();
     component.controlPlane.api.clearBearerToken();
     setState(() {
+      _creatingAdminAccount = false;
       _creatingCollection = false;
       _savingField = false;
       _savingRecord = false;

@@ -16,6 +16,32 @@ class AdminControlPlane {
     return api.authWithPassword(email: email, password: password);
   }
 
+  /// Lists Admin Accounts through the Admin API.
+  Future<List<AdminAccountView>> listAdminAccounts() {
+    return api.listAdminAccounts();
+  }
+
+  /// Creates an Admin Account through the Admin API.
+  Future<AdminAccountView> createAdminAccount({
+    required String email,
+    required String password,
+  }) {
+    return api.createAdminAccount(email: email, password: password);
+  }
+
+  /// Changes an Admin Account password through the Admin API.
+  Future<AdminAccountView> changeAdminAccountPassword({
+    required String id,
+    required String password,
+  }) {
+    return api.changeAdminAccountPassword(id: id, password: password);
+  }
+
+  /// Deletes an Admin Account through the Admin API.
+  Future<void> deleteAdminAccount(String id) {
+    return api.deleteAdminAccount(id);
+  }
+
   /// Lists Collection Schemas through the Admin API.
   Future<List<CollectionSchema>> listCollectionSchemas() {
     return api.listCollectionSchemas();
@@ -176,6 +202,58 @@ class AdminApiClient {
     final session = AdminSession.fromJson(_expectObject(response));
     bearerToken = session.token;
     return session;
+  }
+
+  /// Lists Admin Accounts without credential data.
+  Future<List<AdminAccountView>> listAdminAccounts() async {
+    final response = await _send(method: 'GET', path: '/api/admin/accounts');
+    final object = _expectObject(response);
+    final items = object['items'];
+    if (items is! List<Object?>) {
+      throw AdminApiException(
+        response,
+        message: 'Admin API response field "items" must be a list.',
+      );
+    }
+    return items.map(AdminAccountView.fromJson).toList();
+  }
+
+  /// Creates an Admin Account without returning credential data.
+  Future<AdminAccountView> createAdminAccount({
+    required String email,
+    required String password,
+  }) async {
+    final response = await _send(
+      method: 'POST',
+      path: '/api/admin/accounts',
+      body: <String, Object?>{
+        'email': email,
+        'password': password,
+      },
+    );
+    return AdminAccountView.fromJson(_expectObject(response));
+  }
+
+  /// Changes an Admin Account password without returning credential data.
+  Future<AdminAccountView> changeAdminAccountPassword({
+    required String id,
+    required String password,
+  }) async {
+    final response = await _send(
+      method: 'PATCH',
+      pathSegments: <String>['api', 'admin', 'accounts', id, 'password'],
+      body: <String, Object?>{'password': password},
+    );
+    return AdminAccountView.fromJson(_expectObject(response));
+  }
+
+  /// Deletes an Admin Account.
+  Future<void> deleteAdminAccount(String id) async {
+    final response = await _send(
+      method: 'DELETE',
+      pathSegments: <String>['api', 'admin', 'accounts', id],
+    );
+    _expectEmpty(response);
   }
 
   /// Lists Collection Schemas.

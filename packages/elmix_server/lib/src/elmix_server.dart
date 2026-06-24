@@ -105,6 +105,46 @@ class ElmixServer {
     if (adminSegments case ['auth-with-password']) {
       if (request.method == .post) return _authenticateAdmin(request);
     }
+    if (adminSegments case ['accounts', final id, 'password']) {
+      final adminRequired = await _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
+      if (request.method == .patch) {
+        return _changeAdminAccountPassword(request, id);
+      }
+    }
+    if (adminSegments case ['accounts', final id]) {
+      final adminRequired = await _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
+      if (request.method == .delete) {
+        return _deleteAdminAccount(id);
+      }
+    }
+    if (adminSegments case ['accounts']) {
+      final adminRequired = await _requireAdminSession(request);
+      if (adminRequired != null) {
+        return adminRequired;
+      }
+      if (request.method == .get) {
+        final accounts = await _listAdminAccounts();
+        return ElmixHttpResponse.ok(<String, Object?>{
+          'items': accounts.map(_adminAccountToJson).toList(),
+        });
+      }
+      if (request.method == .post) {
+        return _createAdminAccount(request);
+      }
+    }
+    if (adminSegments case ['collections', '_admins', ...]) {
+      return _error(
+        statusCode: 403,
+        code: 'forbidden',
+        message: 'Admin Accounts must use dedicated Admin API routes.',
+      );
+    }
     if (adminSegments case ['collections']) {
       final adminRequired = await _requireAdminSession(request);
       if (adminRequired != null) {
@@ -211,6 +251,141 @@ class ElmixServer {
         'email': admin.email,
       },
     });
+  }
+
+  Future<List<AdminAccount>> _listAdminAccounts() async {
+    final schema = await engine.getCollectionSchema('_admins');
+    if (schema == null) {
+      return const <AdminAccount>[];
+    }
+    final page = await engine.controlPlane
+        .collection('_admins')
+        .list(
+          query: const QueryExpression(
+            pagination: QueryPagination(perPage: 1000),
+          ),
+        );
+    return <AdminAccount>[
+      for (final record in page.items)
+        AdminAccount(
+          id: AdminAccountIdentifier(record.id.value),
+          email: record.data['email']! as String,
+        ),
+    ];
+  }
+
+  Future<ElmixHttpResponse> _createAdminAccount(
+    ElmixHttpRequest request,
+  ) async {
+    final object = request.body is Map<String, Object?>
+        ? request.body! as Map<String, Object?>
+        : const <String, Object?>{};
+    final email = object['email'];
+    final password = object['password'];
+    if (email is! String ||
+        email.isEmpty ||
+        password is! String ||
+        password.isEmpty) {
+      return _error(
+        statusCode: 400,
+        code: 'invalid_admin_account',
+        message: 'Admin Account email and password are required.',
+      );
+    }
+
+    final id = RecordIdentifier(email);
+    final accounts = engine.controlPlane.collection('_admins');
+    if (await accounts.get(id) != null) {
+      return _error(
+        statusCode: 409,
+        code: 'duplicate_admin_account',
+        message: 'An Admin Account already exists for "$email".',
+      );
+    }
+    final created = await accounts.create(
+      Record(
+        collection: '_admins',
+        id: id,
+        data: <String, Object?>{
+          'email': email,
+          'passwordHash': engine.credentialHasher.hash(password),
+        },
+      ),
+    );
+    return ElmixHttpResponse.created(
+      _adminAccountToJson(
+        AdminAccount(
+          id: AdminAccountIdentifier(created.id.value),
+          email: created.data['email']! as String,
+        ),
+      ),
+    );
+  }
+
+  Future<ElmixHttpResponse> _changeAdminAccountPassword(
+    ElmixHttpRequest request,
+    String id,
+  ) async {
+    final object = request.body is Map<String, Object?>
+        ? request.body! as Map<String, Object?>
+        : const <String, Object?>{};
+    final password = object['password'];
+    if (password is! String || password.isEmpty) {
+      return _error(
+        statusCode: 400,
+        code: 'invalid_admin_account',
+        message: 'An Admin Account password is required.',
+      );
+    }
+
+    final accounts = engine.controlPlane.collection('_admins');
+    final existing = await accounts.get(RecordIdentifier(id));
+    if (existing == null) {
+      return _error(
+        statusCode: 404,
+        code: 'admin_account_not_found',
+        message: 'Admin Account "$id" was not found.',
+      );
+    }
+    final updated = await accounts.update(
+      Record(
+        collection: '_admins',
+        id: existing.id,
+        data: <String, Object?>{
+          ...existing.data,
+          'passwordHash': engine.credentialHasher.hash(password),
+        },
+      ),
+    );
+    return ElmixHttpResponse.ok(
+      _adminAccountToJson(
+        AdminAccount(
+          id: AdminAccountIdentifier(updated.id.value),
+          email: updated.data['email']! as String,
+        ),
+      ),
+    );
+  }
+
+  Future<ElmixHttpResponse> _deleteAdminAccount(String id) async {
+    final accounts = engine.controlPlane.collection('_admins');
+    final existing = await accounts.get(RecordIdentifier(id));
+    if (existing == null) {
+      return _error(
+        statusCode: 404,
+        code: 'admin_account_not_found',
+        message: 'Admin Account "$id" was not found.',
+      );
+    }
+    if ((await _listAdminAccounts()).length <= 1) {
+      return _error(
+        statusCode: 409,
+        code: 'last_admin_account',
+        message: 'The last remaining Admin Account cannot be deleted.',
+      );
+    }
+    await accounts.delete(existing.id);
+    return const ElmixHttpResponse(statusCode: 204);
   }
 
   Future<ElmixHttpResponse> _authenticateAuthRecord({
@@ -435,6 +610,13 @@ class ElmixServer {
                     entry.key: entry.value,
               },
       ),
+    };
+  }
+
+  Map<String, Object?> _adminAccountToJson(AdminAccount account) {
+    return <String, Object?>{
+      'id': account.id.value,
+      'email': account.email,
     };
   }
 
