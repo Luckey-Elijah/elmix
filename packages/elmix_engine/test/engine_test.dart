@@ -45,6 +45,82 @@ void main() {
     });
 
     test(
+      'requires the control-plane capability to bypass Access Rules',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: '_admins',
+            fields: <SchemaField>[
+              SchemaField(name: 'email', type: .email, required: true),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{
+              .create: AccessRule('false'),
+            },
+          ),
+        );
+        const admin = Record(
+          collection: '_admins',
+          id: RecordIdentifier('admin_1'),
+          data: <String, Object?>{'email': 'admin@example.test'},
+        );
+
+        await expectLater(
+          engine.collection('_admins').create(admin),
+          throwsA(isA<AuthorizationException>()),
+        );
+        final created = await engine.controlPlane
+            .collection('_admins')
+            .create(
+              admin,
+            );
+
+        expect(created.id.value, 'admin_1');
+      },
+    );
+
+    test(
+      'does not let a public Auth Record context bypass Access Rules',
+      () async {
+        final storage = InMemoryStorageAdapter();
+        final engine = ElmixEngine(storage: storage);
+        await engine.registerCollection(
+          const CollectionSchema(
+            name: '_admins',
+            fields: <SchemaField>[
+              SchemaField(name: 'email', type: .email, required: true),
+            ],
+            accessRules: <CollectionOperation, AccessRule>{
+              .create: AccessRule('false'),
+            },
+          ),
+        );
+
+        await expectLater(
+          engine
+              .collection(
+                '_admins',
+                context: const RequestContext(
+                  authRecord: AuthRecordIdentity(
+                    collection: 'members',
+                    id: RecordIdentifier('member_1'),
+                  ),
+                ),
+              )
+              .create(
+                const Record(
+                  collection: '_admins',
+                  id: RecordIdentifier('admin_1'),
+                  data: <String, Object?>{'email': 'admin@example.test'},
+                ),
+              ),
+          throwsA(isA<AuthorizationException>()),
+        );
+      },
+    );
+
+    test(
       'treats created and updated as removable default schema fields',
       () async {
         final storage = InMemoryStorageAdapter();

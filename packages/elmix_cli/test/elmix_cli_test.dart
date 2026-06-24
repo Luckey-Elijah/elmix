@@ -126,8 +126,8 @@ void main() {
       final engine = ElmixEngine(storage: storage);
       final schema = await engine.getCollectionSchema('_admins');
       expect(schema?.isAuthCollection, false);
-      final admin = await engine
-          .collection('_admins', context: RequestContext.system)
+      final admin = await engine.controlPlane
+          .collection('_admins')
           .get(const RecordIdentifier('admin@example.com'));
       expect(admin?.data['email'], 'admin@example.com');
       expect(admin?.data['passwordHash'], isNot('secret-password'));
@@ -172,10 +172,7 @@ void main() {
       final storage = SqliteStorageAdapter.open(databasePath);
       addTearDown(storage.close);
       final engine = ElmixEngine(storage: storage);
-      final admins = engine.collection(
-        '_admins',
-        context: RequestContext.system,
-      );
+      final admins = engine.controlPlane.collection('_admins');
       final first = await admins.get(
         const RecordIdentifier('first@example.com'),
       );
@@ -265,8 +262,8 @@ void main() {
         final deepLink = await client.getUrl(
           served.url.resolve('/_/admin/collections/posts'),
         );
-      final script = await client.getUrl(
-        served.url.resolve('/_/admin/main.client.dart.js'),
+        final script = await client.getUrl(
+          served.url.resolve('/_/admin/main.client.dart.js'),
         );
 
         final rootResponse = await root.close();
@@ -280,7 +277,7 @@ void main() {
         expect(deepLinkResponse.statusCode, HttpStatus.ok);
         expect(scriptResponse.statusCode, HttpStatus.ok);
         expect(rootBody, contains('<title>Elmix Admin Control Plane</title>'));
-      expect(rootBody, contains('src="main.client.dart.js"'));
+        expect(rootBody, contains('src="main.client.dart.js"'));
         expect(deepLinkBody, rootBody);
         expect(
           scriptResponse.headers.contentType?.mimeType,
