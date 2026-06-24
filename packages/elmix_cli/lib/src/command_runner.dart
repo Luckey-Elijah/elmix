@@ -200,6 +200,16 @@ class _ServeCommand extends args.Command<int> {
     HttpRequest request,
     ElmixServer server,
   ) async {
+    final adminAsset = AdminControlPlaneAssets.forPath(request.uri.path);
+    if (adminAsset != null) {
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.parse(adminAsset.contentType)
+        ..write(adminAsset.contents);
+      await request.response.close();
+      return;
+    }
+
     final body = await utf8.decoder.bind(request).join();
     final response = await server.handle(
       ElmixHttpRequest(

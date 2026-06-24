@@ -1,7 +1,7 @@
 import 'dart:io';
 
 final _restrictedModifierPattern = RegExp(
-  r'^\s*(abstract\s+(?:final|interface|base)|interface|final|sealed|base)\s+class\b',
+  r'^\s*(?:@\w+(?:\.\w+)*(?:\([^)]*\))?\s+)*(abstract\s+(?:final|interface|base)|interface|final|sealed|base)\s+class\b',
 );
 
 Future<void> main(List<String> arguments) async {

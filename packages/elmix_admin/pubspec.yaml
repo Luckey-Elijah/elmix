@@ -9,7 +9,20 @@ environment:
 
 dependencies:
   elmix_engine: 0.1.0-dev
+  http: ^1.6.0
+  jaspr: ^0.23.1
+  jaspr_router: ^0.8.2
+  web: ^1.1.1
 
 dev_dependencies:
+  build_runner: ^2.15.0
+  build_web_compilers: ^4.1.4
   elmix_server: 0.1.0-dev
+  jaspr_builder: ^0.23.1
+  jaspr_cli: ^0.23.1
+  jaspr_test: ^0.23.1
   test: ^1.31.1
+
+jaspr:
+  mode: client
+  styles: standalone

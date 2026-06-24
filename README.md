@@ -284,3 +284,13 @@ The following are important to the longer-term Elmix vision but intentionally ex
 - polished embedded/plugin framework
 
 The architecture should avoid blocking these features, but they are not acceptance criteria for the first release.
+
+Keep the workspace itself within the Initial Module Set while Core v0 is in
+development:
+
+```bash
+dart run tool/check_core_v0_scope.dart
+```
+
+Adding a future-only package requires an explicit product decision rather than
+quietly widening the release scope.

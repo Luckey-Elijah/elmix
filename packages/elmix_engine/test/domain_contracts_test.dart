@@ -82,21 +82,31 @@ void main() {
       expect(adminAccount.email, 'admin@example.com');
     });
 
-    test('hash passwords with PBKDF2 and verify legacy hashes', () {
-      final hash = AuthPassword.hash('secret');
+    test('hashes credentials with PBKDF2 and verifies legacy hashes', () {
+      const hasher = Pbkdf2CredentialHasher();
+      final hash = hasher.hash('secret');
+      final secondHash = hasher.hash('secret');
 
       expect(hash, startsWith(r'pbkdf2-sha256$'));
-      expect(AuthPassword.verify(password: 'secret', stored: hash), isTrue);
-      expect(AuthPassword.verify(password: 'wrong', stored: hash), isFalse);
+      expect(secondHash, isNot(hash));
+      expect(hasher.verify(password: 'secret', stored: hash), isTrue);
+      expect(hasher.verify(password: 'wrong', stored: hash), isFalse);
       const legacySha256 =
           'sha256:'
           '2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b';
       expect(
-        AuthPassword.verify(
+        hasher.verify(
           password: 'secret',
           stored: legacySha256,
         ),
         isTrue,
+      );
+      expect(
+        hasher.verify(
+          password: 'secret',
+          stored: r'pbkdf2-sha256$120000$not-a-salt!$not-a-hash!',
+        ),
+        isFalse,
       );
     });
   });
