@@ -5,6 +5,166 @@ import 'package:elmix_server/elmix_server.dart';
 import 'package:test/test.dart';
 
 void main() {
+  group('ElmixServer request hooks', () {
+    test('registers request hooks after construction', () async {
+      final server =
+          ElmixServer(
+            ElmixEngine(storage: MemoryStorageAdapter()),
+          )..addRequestHook(
+            const _ResponseServerRequestHook(
+              ElmixHttpResponse(
+                statusCode: 403,
+                body: <String, Object?>{'error': 'blocked'},
+              ),
+            ),
+          );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(method: .get, path: '/not-a-route'),
+      );
+
+      expect(response.statusCode, 403);
+    });
+
+    test(
+      'can short-circuit a request before later hooks and routing',
+      () async {
+        final server = ElmixServer(
+          ElmixEngine(storage: MemoryStorageAdapter()),
+          requestHooks: <ServerRequestHook>[
+            const _ResponseServerRequestHook(
+              ElmixHttpResponse(
+                statusCode: 403,
+                body: <String, Object?>{'error': 'blocked'},
+              ),
+            ),
+            const _ResponseServerRequestHook(
+              ElmixHttpResponse(statusCode: 418),
+            ),
+          ],
+        );
+
+        final response = await server.handle(
+          const ElmixHttpRequest(method: .get, path: '/not-a-route'),
+        );
+
+        expect(response.statusCode, 403);
+        expect(response.body, <String, Object?>{'error': 'blocked'});
+      },
+    );
+
+    test('propagates the route response when a hook calls next', () async {
+      final server = ElmixServer(
+        ElmixEngine(storage: MemoryStorageAdapter()),
+        requestHooks: const <ServerRequestHook>[ServerRequestHook()],
+      );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(method: .get, path: '/not-a-route'),
+      );
+
+      expect(response.statusCode, 404);
+      expect(
+        response.body,
+        <String, Object?>{
+          'error': <String, Object?>{
+            'code': 'not_found',
+            'message': 'No Elmix API route matched the request.',
+          },
+        },
+      );
+    });
+
+    test('composes response changes in registration order', () async {
+      final server = ElmixServer(
+        ElmixEngine(storage: MemoryStorageAdapter()),
+        requestHooks: <ServerRequestHook>[
+          const _WrappingServerRequestHook('first'),
+          const _WrappingServerRequestHook('second'),
+        ],
+      );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(method: .get, path: '/not-a-route'),
+      );
+
+      expect(response.statusCode, 404);
+      expect(
+        response.body,
+        <String, Object?>{
+          'hook': 'first',
+          'response': <String, Object?>{
+            'hook': 'second',
+            'response': <String, Object?>{
+              'error': <String, Object?>{
+                'code': 'not_found',
+                'message': 'No Elmix API route matched the request.',
+              },
+            },
+          },
+        },
+      );
+    });
+
+    test('returns an Elmix-owned error when a hook fails', () async {
+      final server = ElmixServer(
+        ElmixEngine(storage: MemoryStorageAdapter()),
+        requestHooks: <ServerRequestHook>[_ThrowingServerRequestHook()],
+      );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(method: .get, path: '/not-a-route'),
+      );
+
+      expect(response.statusCode, 500);
+      expect(
+        response.body,
+        <String, Object?>{
+          'error': <String, Object?>{
+            'code': 'request_hook_error',
+            'message': 'A server request hook failed.',
+          },
+        },
+      );
+    });
+
+    test('preserves route errors when a hook calls next', () async {
+      final engine = ElmixEngine(storage: MemoryStorageAdapter());
+      await engine.registerCollection(
+        const CollectionSchema(
+          name: 'private_posts',
+          fields: <SchemaField>[SchemaField.recordIdentifier()],
+          accessRules: <CollectionOperation, AccessRule>{
+            .list: AccessRule('false'),
+          },
+        ),
+      );
+      final server = ElmixServer(
+        engine,
+        requestHooks: const <ServerRequestHook>[ServerRequestHook()],
+      );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(
+          method: .get,
+          path: '/api/collections/private_posts/records',
+        ),
+      );
+
+      expect(response.statusCode, 403);
+      expect(
+        response.body,
+        <String, Object?>{
+          'error': <String, Object?>{
+            'code': 'forbidden',
+            'message':
+                'Collection "private_posts" list request is not authorized.',
+          },
+        },
+      );
+    });
+  });
+
   group('ElmixServer Public API', () {
     test('lists collection records through Engine use cases', () async {
       final storage = MemoryStorageAdapter();
@@ -1335,6 +1495,48 @@ void main() {
       },
     );
   });
+}
+
+class _ResponseServerRequestHook implements ServerRequestHook {
+  const _ResponseServerRequestHook(this.response);
+
+  final ElmixHttpResponse response;
+
+  @override
+  Future<ElmixHttpResponse> call(
+    ElmixHttpRequest request,
+    ServerRequestHandler next,
+  ) async {
+    return response;
+  }
+}
+
+class _WrappingServerRequestHook implements ServerRequestHook {
+  const _WrappingServerRequestHook(this.name);
+
+  final String name;
+
+  @override
+  Future<ElmixHttpResponse> call(
+    ElmixHttpRequest request,
+    ServerRequestHandler next,
+  ) async {
+    final response = await next(request);
+    return ElmixHttpResponse(
+      statusCode: response.statusCode,
+      body: <String, Object?>{'hook': name, 'response': response.body},
+    );
+  }
+}
+
+class _ThrowingServerRequestHook implements ServerRequestHook {
+  @override
+  Future<ElmixHttpResponse> call(
+    ElmixHttpRequest request,
+    ServerRequestHandler next,
+  ) {
+    throw StateError('hook failure');
+  }
 }
 
 class MemoryStorageAdapter implements StorageAdapter {
