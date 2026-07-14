@@ -293,6 +293,7 @@ class ElmixServer {
       );
     }
 
+    await _ensureAdminCollection();
     final id = RecordIdentifier(email);
     final accounts = engine.controlPlane.collection('_admins');
     if (await accounts.get(id) != null) {
@@ -318,6 +319,34 @@ class ElmixServer {
           id: AdminAccountIdentifier(created.id.value),
           email: created.data['email']! as String,
         ),
+      ),
+    );
+  }
+
+  Future<void> _ensureAdminCollection() async {
+    final existing = await engine.getCollectionSchema('_admins');
+    if (existing != null) {
+      return;
+    }
+    await engine.registerCollection(
+      const CollectionSchema(
+        name: '_admins',
+        fields: <SchemaField>[
+          SchemaField.recordIdentifier(),
+          SchemaField(name: 'email', type: .email, required: true),
+          SchemaField(
+            name: 'passwordHash',
+            type: .password,
+            required: true,
+          ),
+        ],
+        accessRules: <CollectionOperation, AccessRule>{
+          .list: AccessRule('false'),
+          .view: AccessRule('false'),
+          .create: AccessRule('false'),
+          .update: AccessRule('false'),
+          .delete: AccessRule('false'),
+        },
       ),
     );
   }

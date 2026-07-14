@@ -655,6 +655,68 @@ void main() {
   });
 
   group('ElmixServer Admin API', () {
+    test(
+      'creates the first persisted Admin Account with configured credentials',
+      () async {
+        final engine = ElmixEngine(storage: MemoryStorageAdapter());
+        final server = ElmixServer(
+          engine,
+          adminAuth: const InMemoryAdminAuthProvider(<ServerAdminAccount>[
+            ServerAdminAccount(
+              id: AdminAccountIdentifier('configured_admin'),
+              email: 'configured@example.test',
+              password: 'configured-secret',
+            ),
+          ]),
+        );
+
+        final auth = await server.handle(
+          const ElmixHttpRequest(
+            method: .post,
+            path: '/api/admin/auth-with-password',
+            body: <String, Object?>{
+              'email': 'configured@example.test',
+              'password': 'configured-secret',
+            },
+          ),
+        );
+        final token = (auth.body! as Map<String, Object?>)['token']! as String;
+
+        final initialList = await server.handle(
+          ElmixHttpRequest(
+            method: .get,
+            path: '/api/admin/accounts',
+            headers: <String, String>{'authorization': 'Bearer $token'},
+          ),
+        );
+        final created = await server.handle(
+          ElmixHttpRequest(
+            method: .post,
+            path: '/api/admin/accounts',
+            headers: <String, String>{'authorization': 'Bearer $token'},
+            body: const <String, Object?>{
+              'email': 'persisted@example.test',
+              'password': 'persisted-secret',
+            },
+          ),
+        );
+
+        expect(initialList.statusCode, 200);
+        expect(
+          (initialList.body! as Map<String, Object?>)['items'],
+          isEmpty,
+        );
+        expect(created.statusCode, 201);
+        expect(await engine.getCollectionSchema('_admins'), isNotNull);
+        expect(
+          await engine.controlPlane
+              .collection('_admins')
+              .get(const RecordIdentifier('persisted@example.test')),
+          isNotNull,
+        );
+      },
+    );
+
     test('creates, lists, views, and updates collection schemas', () async {
       final storage = MemoryStorageAdapter();
       final engine = ElmixEngine(storage: storage);
