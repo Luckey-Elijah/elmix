@@ -3,6 +3,33 @@ import 'dart:math';
 
 import 'package:elmix_engine/elmix_engine.dart';
 
+/// Continues handling an HTTP-shaped [request].
+typedef ServerRequestHandler =
+    Future<ElmixHttpResponse> Function(
+      ElmixHttpRequest request,
+    );
+
+/// A server-level HTTP lifecycle extension point.
+class ServerRequestHook {
+  /// Creates a request hook that propagates requests unchanged.
+  const ServerRequestHook();
+
+  /// Handles [request], optionally continuing through [next].
+  ///
+  /// Returning a response without calling [next] short-circuits later hooks
+  /// and route handling. Each hook invocation may call [next] at most once.
+  Future<ElmixHttpResponse> call(
+    ElmixHttpRequest request,
+    ServerRequestHandler next,
+  ) {
+    return next(request);
+  }
+}
+
+class _RequestHookException implements Exception {
+  const _RequestHookException();
+}
+
 /// Server boundary around an [ElmixEngine].
 ///
 /// A concrete HTTP implementation can be added here without leaking transport
@@ -12,17 +39,42 @@ class ElmixServer {
   ElmixServer(
     this.engine, {
     AdminAuthProvider? adminAuth,
-  }) : _adminAuth = adminAuth ?? EngineAdminAuthProvider(engine);
+    List<ServerRequestHook> requestHooks = const <ServerRequestHook>[],
+  }) : _adminAuth = adminAuth ?? EngineAdminAuthProvider(engine),
+       _requestHooks = List<ServerRequestHook>.of(requestHooks);
 
   /// The engine exposed through this server boundary.
   final ElmixEngine engine;
 
   final AdminAuthProvider _adminAuth;
+  final List<ServerRequestHook> _requestHooks;
   final _adminSessions = <String, AdminAccount>{};
   final _authRecordSessions = <String, AuthRecordIdentity>{};
 
+  /// Adds a server-level request lifecycle [hook].
+  ///
+  /// Hooks added while a request is being handled apply to later requests.
+  void addRequestHook(ServerRequestHook hook) {
+    _requestHooks.add(hook);
+  }
+
+  /// The registered server-level request lifecycle hooks.
+  List<ServerRequestHook> get requestHooks => List.unmodifiable(_requestHooks);
+
   /// Handles one HTTP-shaped Elmix request.
   Future<ElmixHttpResponse> handle(ElmixHttpRequest request) async {
+    try {
+      return await _runRequestHooks(request);
+    } on _RequestHookException {
+      return _error(
+        statusCode: 500,
+        code: 'request_hook_error',
+        message: 'A server request hook failed.',
+      );
+    }
+  }
+
+  Future<ElmixHttpResponse> _handleRoute(ElmixHttpRequest request) async {
     try {
       return await _handle(request);
     } on AuthorizationException catch (error) {
@@ -49,6 +101,36 @@ class ElmixServer {
         code: 'query_error',
         message: error.message,
       );
+    }
+  }
+
+  Future<ElmixHttpResponse> _runRequestHooks(ElmixHttpRequest request) {
+    final hooks = List<ServerRequestHook>.of(_requestHooks);
+    return _runRequestHookAt(hooks, 0, request);
+  }
+
+  Future<ElmixHttpResponse> _runRequestHookAt(
+    List<ServerRequestHook> hooks,
+    int index,
+    ElmixHttpRequest request,
+  ) async {
+    if (index == hooks.length) {
+      return _handleRoute(request);
+    }
+    var nextCalled = false;
+    try {
+      return await hooks[index].call(
+        request,
+        (nextRequest) {
+          if (nextCalled) {
+            throw StateError('A server request hook may call next only once.');
+          }
+          nextCalled = true;
+          return _runRequestHookAt(hooks, index + 1, nextRequest);
+        },
+      );
+    } on Object catch (_) {
+      throw const _RequestHookException();
     }
   }
 
