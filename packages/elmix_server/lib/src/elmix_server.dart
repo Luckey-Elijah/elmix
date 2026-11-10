@@ -17,7 +17,7 @@ class ServerRequestHook {
   /// Handles [request], optionally continuing through [next].
   ///
   /// Returning a response without calling [next] short-circuits later hooks
-  /// and route handling.
+  /// and route handling. Each hook invocation may call [next] at most once.
   Future<ElmixHttpResponse> call(
     ElmixHttpRequest request,
     ServerRequestHandler next,
@@ -52,6 +52,8 @@ class ElmixServer {
   final _authRecordSessions = <String, AuthRecordIdentity>{};
 
   /// Adds a server-level request lifecycle [hook].
+  ///
+  /// Hooks added while a request is being handled apply to later requests.
   void addRequestHook(ServerRequestHook hook) {
     _requestHooks.add(hook);
   }
@@ -103,20 +105,29 @@ class ElmixServer {
   }
 
   Future<ElmixHttpResponse> _runRequestHooks(ElmixHttpRequest request) {
-    return _runRequestHookAt(0, request);
+    final hooks = List<ServerRequestHook>.of(_requestHooks);
+    return _runRequestHookAt(hooks, 0, request);
   }
 
   Future<ElmixHttpResponse> _runRequestHookAt(
+    List<ServerRequestHook> hooks,
     int index,
     ElmixHttpRequest request,
   ) async {
-    if (index == _requestHooks.length) {
+    if (index == hooks.length) {
       return _handleRoute(request);
     }
+    var nextCalled = false;
     try {
-      return await _requestHooks[index].call(
+      return await hooks[index].call(
         request,
-        (nextRequest) => _runRequestHookAt(index + 1, nextRequest),
+        (nextRequest) {
+          if (nextCalled) {
+            throw StateError('A server request hook may call next only once.');
+          }
+          nextCalled = true;
+          return _runRequestHookAt(hooks, index + 1, nextRequest);
+        },
       );
     } on Object catch (_) {
       throw const _RequestHookException();

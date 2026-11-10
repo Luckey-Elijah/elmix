@@ -27,6 +27,37 @@ void main() {
     });
 
     test(
+      'hooks registered during a request start on the next request',
+      () async {
+        late final ElmixServer server;
+        var registered = false;
+        var downstreamCalls = 0;
+        server = ElmixServer(
+          ElmixEngine(storage: MemoryStorageAdapter()),
+          requestHooks: <ServerRequestHook>[
+            _RegisterDuringRequestServerRequestHook(() {
+              if (registered) return;
+              registered = true;
+              server.addRequestHook(
+                _CountingServerRequestHook(() => downstreamCalls++),
+              );
+            }),
+          ],
+        );
+
+        await server.handle(
+          const ElmixHttpRequest(method: .get, path: '/not-a-route'),
+        );
+        expect(downstreamCalls, 0);
+
+        await server.handle(
+          const ElmixHttpRequest(method: .get, path: '/not-a-route'),
+        );
+        expect(downstreamCalls, 1);
+      },
+    );
+
+    test(
       'can short-circuit a request before later hooks and routing',
       () async {
         final server = ElmixServer(
@@ -73,6 +104,33 @@ void main() {
           },
         },
       );
+    });
+
+    test('fails when a hook calls next more than once', () async {
+      var downstreamCalls = 0;
+      final server = ElmixServer(
+        ElmixEngine(storage: MemoryStorageAdapter()),
+        requestHooks: <ServerRequestHook>[
+          _DoubleNextServerRequestHook(),
+          _CountingServerRequestHook(() => downstreamCalls++),
+        ],
+      );
+
+      final response = await server.handle(
+        const ElmixHttpRequest(method: .get, path: '/not-a-route'),
+      );
+
+      expect(response.statusCode, 500);
+      expect(
+        response.body,
+        <String, Object?>{
+          'error': <String, Object?>{
+            'code': 'request_hook_error',
+            'message': 'A server request hook failed.',
+          },
+        },
+      );
+      expect(downstreamCalls, 1);
     });
 
     test('composes response changes in registration order', () async {
@@ -1526,6 +1584,47 @@ class _WrappingServerRequestHook implements ServerRequestHook {
       statusCode: response.statusCode,
       body: <String, Object?>{'hook': name, 'response': response.body},
     );
+  }
+}
+
+class _DoubleNextServerRequestHook implements ServerRequestHook {
+  @override
+  Future<ElmixHttpResponse> call(
+    ElmixHttpRequest request,
+    ServerRequestHandler next,
+  ) async {
+    await next(request);
+    return next(request);
+  }
+}
+
+class _RegisterDuringRequestServerRequestHook implements ServerRequestHook {
+  const _RegisterDuringRequestServerRequestHook(this.registerHook);
+
+  final void Function() registerHook;
+
+  @override
+  Future<ElmixHttpResponse> call(
+    ElmixHttpRequest request,
+    ServerRequestHandler next,
+  ) {
+    registerHook();
+    return next(request);
+  }
+}
+
+class _CountingServerRequestHook implements ServerRequestHook {
+  const _CountingServerRequestHook(this.onCall);
+
+  final void Function() onCall;
+
+  @override
+  Future<ElmixHttpResponse> call(
+    ElmixHttpRequest request,
+    ServerRequestHandler next,
+  ) async {
+    onCall();
+    return next(request);
   }
 }
 
